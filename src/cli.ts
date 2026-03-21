@@ -8,6 +8,7 @@ import { runSetupCommand } from './commands/setup-cmd.js';
 import { renderStatusline } from './commands/statusline-cmd.js';
 import { runInstallStatuslineCommand } from './commands/install-statusline-cmd.js';
 import { runUninstallStatuslineCommand } from './commands/uninstall-statusline-cmd.js';
+import { runWatch } from './commands/watch-cmd.js';
 
 const program = new Command();
 
@@ -123,6 +124,22 @@ program
   .action(async () => {
     const output = await runUninstallStatuslineCommand();
     console.log(output);
+  });
+
+program
+  .command('watch')
+  .description('Live updating usage dashboard')
+  .option('--interval <seconds>', 'Refresh interval in seconds', '30')
+  .option('--compact', 'Minimal output')
+  .option('--json', 'Stream JSON objects')
+  .option('--no-color', 'Disable colors')
+  .action(async (opts) => {
+    await runWatch({
+      interval: parseInt(opts.interval, 10),
+      compact: opts.compact,
+      json: opts.json,
+      noColor: opts.color === false,
+    });
   });
 
 // Default action (no subcommand = this-month)
