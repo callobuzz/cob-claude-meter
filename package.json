@@ -1,0 +1,43 @@
+{
+  "name": "@callobuzz/claude-meter",
+  "version": "0.1.0",
+  "description": "CLI tool for Claude Code token usage tracking and cost estimation",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "claude-meter": "dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "start": "node dist/cli.js",
+    "test": "node --experimental-vm-modules node_modules/.bin/jest",
+    "lint": "eslint src/"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "files": [
+    "dist/",
+    "data/"
+  ],
+  "keywords": [
+    "claude", "claude-code", "token-usage", "cost-estimation",
+    "cli", "anthropic", "statusline", "meter"
+  ],
+  "author": "SV",
+  "license": "MIT",
+  "dependencies": {
+    "chalk": "^5.3.0",
+    "commander": "^12.1.0",
+    "inquirer": "^9.2.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/inquirer": "^9.0.0",
+    "jest": "^29.7.0",
+    "@types/jest": "^29.5.0",
+    "ts-jest": "^29.1.0",
+    "typescript": "^5.4.0"
+  }
+}
