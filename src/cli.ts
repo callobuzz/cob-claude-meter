@@ -1,4 +1,13 @@
 #!/usr/bin/env node
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { setPricingRoot } from './core/pricing.js';
+
+// Set package root so pricing.json can be found from any working directory
+const __filename = fileURLToPath(import.meta.url);
+const packageRoot = join(dirname(__filename), '..');
+setPricingRoot(packageRoot);
+
 import { Command } from 'commander';
 import { runReport } from './commands/report.js';
 import { runConfigCommand } from './commands/config-cmd.js';
@@ -106,7 +115,7 @@ program
     }
     const data = JSON.parse(input);
     const mode = opts.inline ? 'inline' : (opts.mode || 'replace');
-    const output = renderStatusline(data, mode, { noColor: opts.color === false });
+    const output = await renderStatusline(data, mode, { noColor: opts.color === false });
     process.stdout.write(output);
   });
 

@@ -17,51 +17,51 @@ const MOCK_STDIN = {
 };
 
 describe('renderStatusline', () => {
-  it('replace mode produces 2 lines', () => {
-    const output = renderStatusline(MOCK_STDIN, 'replace', { noColor: true });
+  it('replace mode produces 2 lines', async () => {
+    const output = await renderStatusline(MOCK_STDIN, 'replace', { noColor: true });
     const lines = output.split('\n').filter(Boolean);
     expect(lines.length).toBe(2);
   });
 
-  it('replace mode line 1 contains model name', () => {
-    const output = renderStatusline(MOCK_STDIN, 'replace', { noColor: true });
+  it('replace mode line 1 contains model name', async () => {
+    const output = await renderStatusline(MOCK_STDIN, 'replace', { noColor: true });
     const lines = output.split('\n').filter(Boolean);
     expect(lines[0]).toContain('Opus');
   });
 
-  it('replace mode line 1 contains progress bar', () => {
-    const output = renderStatusline(MOCK_STDIN, 'replace', { noColor: true });
+  it('replace mode line 1 contains progress bar', async () => {
+    const output = await renderStatusline(MOCK_STDIN, 'replace', { noColor: true });
     const lines = output.split('\n').filter(Boolean);
     expect(lines[0]).toContain('%');
     expect(lines[0]).toMatch(/[\[=\s\]]/);
   });
 
-  it('replace mode line 1 contains project name', () => {
-    const output = renderStatusline(MOCK_STDIN, 'replace', { noColor: true });
+  it('replace mode line 1 contains project name', async () => {
+    const output = await renderStatusline(MOCK_STDIN, 'replace', { noColor: true });
     const lines = output.split('\n').filter(Boolean);
     expect(lines[0]).toContain('project');
   });
 
-  it('inline mode produces single line', () => {
-    const output = renderStatusline(MOCK_STDIN, 'inline', { noColor: true });
+  it('inline mode produces single line', async () => {
+    const output = await renderStatusline(MOCK_STDIN, 'inline', { noColor: true });
     const lines = output.split('\n').filter(Boolean);
     expect(lines.length).toBe(1);
   });
 
-  it('add mode produces single line (meter data only)', () => {
-    const output = renderStatusline(MOCK_STDIN, 'add', { noColor: true });
+  it('add mode produces single line (meter data only)', async () => {
+    const output = await renderStatusline(MOCK_STDIN, 'add', { noColor: true });
     const lines = output.split('\n').filter(Boolean);
     expect(lines.length).toBe(1);
   });
 
-  it('output contains cost info', () => {
-    const output = renderStatusline(MOCK_STDIN, 'inline', { noColor: true });
+  it('output contains cost info', async () => {
+    const output = await renderStatusline(MOCK_STDIN, 'inline', { noColor: true });
     expect(output).toContain('$');
   });
 
-  it('handles null current_usage gracefully', () => {
+  it('handles null current_usage gracefully', async () => {
     const data = { ...MOCK_STDIN, context_window: { ...MOCK_STDIN.context_window, current_usage: null } };
-    const output = renderStatusline(data, 'replace', { noColor: true });
+    const output = await renderStatusline(data, 'replace', { noColor: true });
     expect(output.length).toBeGreaterThan(0);
   });
 });

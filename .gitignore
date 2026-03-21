@@ -1,6 +1,13 @@
 node_modules/
 dist/
 *.js.map
-.claude-meter/
 *.tgz
 .env
+.env.*
+.claude-meter/
+.claude/
+
+# Internal planning docs (design/implementation plans)
+docs/plans/
+docs/prd.md
+docs/working-ps.md

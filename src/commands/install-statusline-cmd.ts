@@ -49,6 +49,20 @@ console.log(line2);
   writeFileSync(wrapperPath, script);
 }
 
+function makeStatusLineObject(command: string): Record<string, unknown> {
+  return { type: 'command', command };
+}
+
+function getExistingCommand(statusLine: unknown): string | null {
+  if (!statusLine) return null;
+  if (typeof statusLine === 'string') return statusLine;
+  if (typeof statusLine === 'object' && statusLine !== null) {
+    const sl = statusLine as Record<string, unknown>;
+    if (typeof sl['command'] === 'string') return sl['command'];
+  }
+  return null;
+}
+
 export async function runInstallStatuslineCommand(): Promise<string> {
   const settingsPath = getClaudeSettingsPath();
   const meterDir = getClaudeMeterDir();
@@ -57,16 +71,16 @@ export async function runInstallStatuslineCommand(): Promise<string> {
 
   // Read existing settings
   const settings = readJsonFile(settingsPath);
-  const existingStatusLine = settings['statusLine'] as string | undefined;
+  const existingCommand = getExistingCommand(settings['statusLine']);
 
   // Backup original settings
   ensureDir(meterDir);
   writeFileSync(backupPath, JSON.stringify(settings, null, 2), 'utf-8');
   lines.push(`Backed up settings to ${backupPath}`);
 
-  if (!existingStatusLine) {
+  if (!existingCommand) {
     // No existing statusLine - just set it
-    settings['statusLine'] = 'claude-meter statusline';
+    settings['statusLine'] = makeStatusLineObject('claude-meter statusline');
     ensureDir(join(homedir(), '.claude'));
     writeFileSync(settingsPath, JSON.stringify(settings, null, 2), 'utf-8');
     lines.push('Installed claude-meter as statusline command.');
@@ -80,7 +94,7 @@ export async function runInstallStatuslineCommand(): Promise<string> {
 
   console.log('');
   console.log('Existing statusline found:');
-  console.log(`  command: ${existingStatusLine}`);
+  console.log(`  command: ${existingCommand}`);
   console.log('');
 
   const { choice } = await inquirer.prompt([
@@ -97,7 +111,7 @@ export async function runInstallStatuslineCommand(): Promise<string> {
   ]);
 
   if (choice === 'replace') {
-    settings['statusLine'] = 'claude-meter statusline';
+    settings['statusLine'] = makeStatusLineObject('claude-meter statusline');
     writeFileSync(settingsPath, JSON.stringify(settings, null, 2), 'utf-8');
     lines.push('Replaced statusline with claude-meter.');
     lines.push('');
@@ -107,13 +121,13 @@ export async function runInstallStatuslineCommand(): Promise<string> {
 
     if (isWindows) {
       const wrapperPath = join(meterDir, 'statusline-wrapper.js');
-      createWindowsWrapper(existingStatusLine, wrapperPath);
-      settings['statusLine'] = `node "${wrapperPath}"`;
+      createWindowsWrapper(existingCommand, wrapperPath);
+      settings['statusLine'] = makeStatusLineObject(`node "${wrapperPath}"`);
       lines.push(`Created wrapper at ${wrapperPath}`);
     } else {
       const wrapperPath = join(meterDir, 'statusline-wrapper.sh');
-      createUnixWrapper(existingStatusLine, wrapperPath);
-      settings['statusLine'] = wrapperPath;
+      createUnixWrapper(existingCommand, wrapperPath);
+      settings['statusLine'] = makeStatusLineObject(wrapperPath);
       lines.push(`Created wrapper at ${wrapperPath}`);
     }
 
@@ -126,10 +140,10 @@ export async function runInstallStatuslineCommand(): Promise<string> {
     lines.push('');
     lines.push('Skipped. To set up manually, add this to ~/.claude/settings.json:');
     lines.push('');
-    lines.push('  "statusLine": "claude-meter statusline"');
+    lines.push('  "statusLine": { "type": "command", "command": "claude-meter statusline" }');
     lines.push('');
-    lines.push('Or to keep your existing statusline and add claude-meter:');
-    lines.push(`  "statusLine": "${existingStatusLine} && claude-meter statusline --mode add --no-color"`);
+    lines.push('Or to keep your existing statusline and add claude-meter,');
+    lines.push('use: claude-meter install-statusline and choose "Add".');
   }
 
   return lines.join('\n');

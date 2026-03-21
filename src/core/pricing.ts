@@ -18,15 +18,27 @@ interface PricingData {
 
 let cachedPricing: PricingData | null = null;
 
+// Injected at build time by cli.ts — set before any pricing calls
+let _packageRoot: string = '';
+
+export function setPricingRoot(root: string): void {
+  _packageRoot = root;
+}
+
 function findPricingFile(): string {
   const candidates: string[] = [];
 
-  // When running via ts-jest or from dist/, __dirname points to src/core or dist/core
+  // Set by cli.ts at startup (works in ESM global install)
+  if (_packageRoot) {
+    candidates.push(join(_packageRoot, 'data', 'pricing.json'));
+  }
+
+  // CJS compat (__dirname available in ts-jest)
   if (typeof __dirname !== 'undefined') {
     candidates.push(join(__dirname, '..', '..', 'data', 'pricing.json'));
   }
 
-  // Fallback: resolve from cwd (works when run as CLI from package root)
+  // Fallback: cwd
   candidates.push(join(process.cwd(), 'data', 'pricing.json'));
 
   for (const candidate of candidates) {

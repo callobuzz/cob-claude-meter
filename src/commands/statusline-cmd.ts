@@ -1,9 +1,14 @@
 import { execSync } from 'node:child_process';
-import { basename } from 'node:path';
+import { basename, join } from 'node:path';
 import { CacheManager } from '../core/cache-manager.js';
+import { ConfigManager } from '../core/config-manager.js';
+import { discoverLogPaths, findJsonlFiles } from '../core/path-resolver.js';
+import { scanFile } from '../core/scanner.js';
+import { Aggregator } from '../core/aggregator.js';
+import { calculateCosts } from '../core/cost-calculator.js';
+import { getDateRange } from '../core/date-ranges.js';
 import { formatTokens, formatCost } from '../core/formatter.js';
 import { homedir } from 'node:os';
-import { join } from 'node:path';
 
 export type StatuslineMode = 'replace' | 'add' | 'inline';
 
@@ -53,40 +58,102 @@ function formatTokensCompact(n: number): string {
   return `${Math.round(n / 1000)}k`;
 }
 
-function getHistoricalLine(cacheManager: CacheManager): string {
+async function refreshCache(cacheManager: CacheManager, configManager: ConfigManager): Promise<void> {
+  const config = configManager.load();
+  const logPaths = config.logPaths.length > 0 ? config.logPaths : discoverLogPaths();
+  if (logPaths.length === 0) return;
+
+  const now = new Date();
+  const todayRange = getDateRange('today', now);
+  const monthRange = getDateRange('this-month', now);
+
+  const todayAgg = new Aggregator();
+  const monthAgg = new Aggregator();
+
+  for (const logPath of logPaths) {
+    const files = findJsonlFiles(logPath);
+    for (const file of files) {
+      await scanFile(file, (entry) => {
+        // Add to month aggregator (wider range)
+        if (entry.timestamp >= monthRange.start && entry.timestamp <= monthRange.end) {
+          monthAgg.add(entry);
+        }
+        // Add to today aggregator (narrower range)
+        if (entry.timestamp >= todayRange.start && entry.timestamp <= todayRange.end) {
+          todayAgg.add(entry);
+        }
+      });
+    }
+  }
+
+  const todayResult = todayAgg.getResult('today', todayRange.start, todayRange.end);
+  const monthResult = monthAgg.getResult('this-month', monthRange.start, monthRange.end);
+  const todayCost = calculateCosts(todayResult);
+  const monthCost = calculateCosts(monthResult);
+
+  cacheManager.write({
+    today: { tokens: todayResult.totals.fresh_total, cost: todayCost.total },
+    month: { tokens: monthResult.totals.fresh_total, cost: monthCost.total },
+  });
+}
+
+function costColor(amount: number, noColor?: boolean): string {
+  if (noColor) return '';
+  if (amount >= 500) return '\x1b[91m';  // red
+  if (amount >= 100) return '\x1b[93m';  // yellow
+  return '\x1b[92m';                      // green
+}
+
+function getHistoricalLine(cacheManager: CacheManager, noColor?: boolean): string {
   const entry = cacheManager.read();
   if (!entry || !entry.data) {
-    return "Run 'claude-meter today' to populate data";
+    return '...';
   }
+
+  const DIM = noColor ? '' : '\x1b[2m';
+  const CYAN = noColor ? '' : '\x1b[96m';
+  const RESET = noColor ? '' : '\x1b[0m';
 
   const data = entry.data as Record<string, unknown>;
   const parts: string[] = [];
 
-  // Try to extract today and month data from cache
   const today = data.today as { tokens?: number; cost?: number } | undefined;
   const month = data.month as { tokens?: number; cost?: number } | undefined;
 
   if (today) {
-    parts.push(`Today: ${formatTokens(today.tokens ?? 0)} ~${formatCost(today.cost ?? 0)}`);
+    const cc = costColor(today.cost ?? 0, noColor);
+    parts.push(`${DIM}Today:${RESET} ${CYAN}${formatTokens(today.tokens ?? 0)}${RESET} ${DIM}~${RESET}${cc}${formatCost(today.cost ?? 0)}${RESET}`);
   }
   if (month) {
-    parts.push(`Month: ${formatTokens(month.tokens ?? 0)} ~${formatCost(month.cost ?? 0)}`);
+    const cc = costColor(month.cost ?? 0, noColor);
+    parts.push(`${DIM}Month:${RESET} ${CYAN}${formatTokens(month.tokens ?? 0)}${RESET} ${DIM}~${RESET}${cc}${formatCost(month.cost ?? 0)}${RESET}`);
   }
 
   if (parts.length === 0) {
-    return "Run 'claude-meter today' to populate data";
+    return '...';
   }
 
-  return parts.join(' | ');
+  return parts.join(` ${DIM}|${RESET} `);
 }
 
-export function renderStatusline(
+export async function renderStatusline(
   stdinData: StdinData,
   mode: StatuslineMode,
   options?: StatuslineOptions,
-): string {
+): Promise<string> {
   const cacheDir = join(homedir(), '.claude-meter');
   const cacheManager = new CacheManager(cacheDir);
+  const configManager = new ConfigManager();
+
+  // Auto-refresh cache if stale or missing
+  const ttl = configManager.load().statusline.refreshCache;
+  if (cacheManager.isStale(ttl)) {
+    try {
+      await refreshCache(cacheManager, configManager);
+    } catch {
+      // Don't block statusline on scan errors
+    }
+  }
 
   const modelName = stdinData.model?.display_name ?? stdinData.model?.id ?? 'Unknown';
   const ctxWindow = stdinData.context_window;
@@ -105,32 +172,46 @@ export function renderStatusline(
   const projectDir = stdinData.workspace?.current_dir ?? '';
   const projectName = projectDir ? basename(projectDir) : '';
 
+  // ANSI color codes (matching original Python statusline)
+  const CYAN = options?.noColor ? '' : '\x1b[96m';
+  const GREEN = options?.noColor ? '' : '\x1b[92m';
+  const YELLOW = options?.noColor ? '' : '\x1b[93m';
+  const WHITE = options?.noColor ? '' : '\x1b[97m';
+  const MAGENTA = options?.noColor ? '' : '\x1b[95m';
+  const BLUE = options?.noColor ? '' : '\x1b[94m';
+  const DIM = options?.noColor ? '' : '\x1b[37m';
+  const RESET = options?.noColor ? '' : '\x1b[0m';
+
+  // Progress bar color based on percentage
+  let barColor = GREEN;
+  if (percentage >= 80) barColor = options?.noColor ? '' : '\x1b[91m'; // red
+  else if (percentage >= 50) barColor = YELLOW;
+
   if (mode === 'replace') {
     // Line 1: model + progress bar + tokens + git + project
     const bar = buildProgressBar(percentage);
     const tokensStr = `${formatTokensCompact(usedTokens)}/${formatTokensCompact(windowSize)}`;
 
     const gitBranch = getGitBranch(projectDir || undefined);
-    const gitPart = gitBranch ? ` git:${gitBranch}` : '';
-    const projectPart = projectName ? ` | ${projectName}` : '';
+    const gitPart = gitBranch ? ` ${MAGENTA}git:${gitBranch}${RESET}` : '';
+    const projectPart = projectName ? ` | ${BLUE}${projectName}${RESET}` : '';
 
-    const line1 = `${modelName} ${bar} ${percentage}% ${tokensStr}${gitPart}${projectPart}`;
+    const line1 = `${CYAN}${modelName}${RESET} ${barColor}${bar}${RESET} ${YELLOW}${percentage}%${RESET} ${WHITE}${tokensStr}${RESET}${gitPart}${projectPart}`;
 
-    // Line 2: historical data or session cost fallback
-    const historicalLine = getHistoricalLine(cacheManager);
-    const line2 = historicalLine;
+    // Line 2: historical meter data (colors built-in)
+    const line2 = getHistoricalLine(cacheManager, options?.noColor);
 
     return `${line1}\n${line2}\n`;
   }
 
   if (mode === 'add') {
     // Single line: historical meter data or session cost
-    const historicalLine = getHistoricalLine(cacheManager);
+    const historicalLine = getHistoricalLine(cacheManager, options?.noColor);
     return `${historicalLine}\n`;
   }
 
   // inline mode: compact single line
-  const historicalLine = getHistoricalLine(cacheManager);
+  const historicalLine = getHistoricalLine(cacheManager, options?.noColor);
   // Always include session cost in inline
   const costPart = `$${sessionCost.toFixed(2)}`;
   const cacheEntry = cacheManager.read();
