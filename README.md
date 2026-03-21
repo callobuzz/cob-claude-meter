@@ -15,6 +15,14 @@ Track tokens, estimate costs, and monitor usage — all from your terminal.
 
 </div>
 
+<div align="center">
+<img src="https://raw.githubusercontent.com/callobuzz/cob-claude-meter/main/docs/showcase/cob-claude-meter-this-month.png" alt="Claude Meter monthly report" width="700">
+<br><br>
+<img src="https://raw.githubusercontent.com/callobuzz/cob-claude-meter/main/docs/showcase/cob-claude-statusline.png" alt="Claude Meter statusline" width="700">
+<br>
+<em>Statusline showing live token usage and cost in Claude Code</em>
+</div>
+
 ---
 
 ## Quick Start
