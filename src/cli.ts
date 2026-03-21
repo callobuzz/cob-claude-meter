@@ -1,6 +1,10 @@
 #!/usr/bin/env node
 import { Command } from 'commander';
 import { runReport } from './commands/report.js';
+import { runConfigCommand } from './commands/config-cmd.js';
+import { runPathsCommand } from './commands/paths-cmd.js';
+import { runDoctorCommand } from './commands/doctor-cmd.js';
+import { runSetupCommand } from './commands/setup-cmd.js';
 
 const program = new Command();
 
@@ -46,6 +50,41 @@ program
   .option('--verbose', 'Show scan details')
   .action(async (start, end, opts) => {
     const output = await runReport('range', opts, start, end);
+    console.log(output);
+  });
+
+// Management commands
+program
+  .command('config')
+  .description('View or modify configuration')
+  .option('--set <keyvalue>', 'Set a config value (key=value)')
+  .option('--reset', 'Reset config to defaults')
+  .action(async (opts) => {
+    const output = await runConfigCommand(opts);
+    console.log(output);
+  });
+
+program
+  .command('paths')
+  .description('Show detected log paths')
+  .action(async () => {
+    const output = await runPathsCommand();
+    console.log(output);
+  });
+
+program
+  .command('doctor')
+  .description('Run diagnostics')
+  .action(async () => {
+    const output = await runDoctorCommand();
+    console.log(output);
+  });
+
+program
+  .command('setup')
+  .description('Interactive log path setup')
+  .action(async () => {
+    const output = await runSetupCommand();
     console.log(output);
   });
 
