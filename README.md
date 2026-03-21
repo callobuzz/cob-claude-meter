@@ -269,7 +269,7 @@ No. The statusline reads from a local cache file (< 10ms). Log scanning happens 
 ## Contributing
 
 ```bash
-git clone https://github.com/callobuzz/claude-meter
+git clone https://github.com/callobuzz/cob-claude-meter
 cd claude-meter
 npm install
 npm run build

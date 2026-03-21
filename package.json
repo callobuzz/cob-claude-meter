@@ -33,11 +33,11 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/callobuzz/claude-meter"
+    "url": "https://github.com/callobuzz/cob-claude-meter"
   },
-  "homepage": "https://github.com/callobuzz/claude-meter",
+  "homepage": "https://github.com/callobuzz/cob-claude-meter",
   "bugs": {
-    "url": "https://github.com/callobuzz/claude-meter/issues"
+    "url": "https://github.com/callobuzz/cob-claude-meter/issues"
   },
   "author": "SV",
   "license": "MIT",
