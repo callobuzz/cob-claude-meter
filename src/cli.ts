@@ -5,6 +5,7 @@ import { runConfigCommand } from './commands/config-cmd.js';
 import { runPathsCommand } from './commands/paths-cmd.js';
 import { runDoctorCommand } from './commands/doctor-cmd.js';
 import { runSetupCommand } from './commands/setup-cmd.js';
+import { renderStatusline } from './commands/statusline-cmd.js';
 
 const program = new Command();
 
@@ -86,6 +87,24 @@ program
   .action(async () => {
     const output = await runSetupCommand();
     console.log(output);
+  });
+
+program
+  .command('statusline')
+  .description('Output for Claude Code statusline')
+  .option('--mode <mode>', 'Output mode: replace, add, inline', 'replace')
+  .option('--inline', 'Shortcut for --mode inline')
+  .option('--no-color', 'Disable colors')
+  .action(async (opts) => {
+    let input = '';
+    process.stdin.setEncoding('utf-8');
+    for await (const chunk of process.stdin) {
+      input += chunk;
+    }
+    const data = JSON.parse(input);
+    const mode = opts.inline ? 'inline' : (opts.mode || 'replace');
+    const output = renderStatusline(data, mode, { noColor: opts.color === false });
+    process.stdout.write(output);
   });
 
 // Default action (no subcommand = this-month)
