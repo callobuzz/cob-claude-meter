@@ -6,6 +6,8 @@ import { runPathsCommand } from './commands/paths-cmd.js';
 import { runDoctorCommand } from './commands/doctor-cmd.js';
 import { runSetupCommand } from './commands/setup-cmd.js';
 import { renderStatusline } from './commands/statusline-cmd.js';
+import { runInstallStatuslineCommand } from './commands/install-statusline-cmd.js';
+import { runUninstallStatuslineCommand } from './commands/uninstall-statusline-cmd.js';
 
 const program = new Command();
 
@@ -105,6 +107,22 @@ program
     const mode = opts.inline ? 'inline' : (opts.mode || 'replace');
     const output = renderStatusline(data, mode, { noColor: opts.color === false });
     process.stdout.write(output);
+  });
+
+program
+  .command('install-statusline')
+  .description('Install claude-meter into Claude Code statusline')
+  .action(async () => {
+    const output = await runInstallStatuslineCommand();
+    console.log(output);
+  });
+
+program
+  .command('uninstall-statusline')
+  .description('Remove claude-meter from Claude Code statusline')
+  .action(async () => {
+    const output = await runUninstallStatuslineCommand();
+    console.log(output);
   });
 
 // Default action (no subcommand = this-month)
