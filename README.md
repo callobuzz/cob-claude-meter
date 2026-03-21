@@ -6,8 +6,8 @@
 
 Track tokens, estimate costs, and monitor usage — all from your terminal.
 
-[![npm version](https://img.shields.io/npm/v/@callobuzz/claude-meter)](https://www.npmjs.com/package/@callobuzz/claude-meter)
-[![license](https://img.shields.io/npm/l/@callobuzz/claude-meter)](LICENSE)
+[![npm version](https://img.shields.io/npm/v/cob-claude-meter)](https://www.npmjs.com/package/cob-claude-meter)
+[![license](https://img.shields.io/npm/l/cob-claude-meter)](LICENSE)
 ![platform](https://img.shields.io/badge/platform-windows%20%7C%20macos%20%7C%20linux-blue)
 ![node](https://img.shields.io/badge/node-%3E%3D18-brightgreen)
 
@@ -20,7 +20,7 @@ Track tokens, estimate costs, and monitor usage — all from your terminal.
 ## Quick Start
 
 ```bash
-npm install -g @callobuzz/claude-meter
+npm install -g cob-claude-meter
 
 claude-meter today
 

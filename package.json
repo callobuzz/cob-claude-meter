@@ -1,5 +1,5 @@
 {
-  "name": "@callobuzz/claude-meter",
+  "name": "cob-claude-meter",
   "version": "0.1.0",
   "description": "CLI tool for Claude Code token usage tracking and cost estimation",
   "type": "module",
