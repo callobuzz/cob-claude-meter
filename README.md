@@ -11,6 +11,8 @@ Track tokens, estimate costs, and monitor usage — all from your terminal.
 ![platform](https://img.shields.io/badge/platform-windows%20%7C%20macos%20%7C%20linux-blue)
 ![node](https://img.shields.io/badge/node-%3E%3D18-brightgreen)
 
+[**Showcase & Demo**](https://callobuzz.github.io/claude-meter/showcase/)
+
 </div>
 
 ---
@@ -278,4 +280,4 @@ npm test
 
 ## License
 
-MIT
+MIT — by [Call O Buzz](https://callobuzz.com)
