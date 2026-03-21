@@ -1,0 +1,525 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Claude Meter — Know exactly what your Claude Code usage costs</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg-dark: #0a0a1a;
+    --bg-mid: #12122a;
+    --bg-light: #1a1a3a;
+    --green: #4ade80;
+    --cyan: #22d3ee;
+    --white: #e2e8f0;
+    --dim: #94a3b8;
+    --terminal-bg: #0c0c1e;
+    --card-bg: #14142e;
+    --border: #2a2a4a;
+    --font-mono: 'Courier New', 'Consolas', 'Monaco', monospace;
+    --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    background: linear-gradient(180deg, var(--bg-dark) 0%, var(--bg-light) 50%, var(--bg-dark) 100%);
+    color: var(--white);
+    font-family: var(--font-sans);
+    line-height: 1.6;
+    min-height: 100vh;
+  }
+
+  a { color: var(--cyan); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  /* Hero */
+  .hero {
+    text-align: center;
+    padding: 6rem 1.5rem 4rem;
+    background: radial-gradient(ellipse at 50% 0%, rgba(34, 211, 238, 0.08) 0%, transparent 60%);
+  }
+  .hero h1 {
+    font-size: 3.5rem;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    margin-bottom: 0.5rem;
+    background: linear-gradient(135deg, var(--green), var(--cyan));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  .hero .tagline {
+    font-size: 1.35rem;
+    color: var(--dim);
+    max-width: 540px;
+    margin: 0 auto 2rem;
+  }
+  .hero .badges {
+    display: flex;
+    gap: 0.5rem;
+    justify-content: center;
+    flex-wrap: wrap;
+    margin-bottom: 2.5rem;
+  }
+  .hero .badges span {
+    display: inline-block;
+    padding: 0.3rem 0.8rem;
+    border-radius: 999px;
+    font-size: 0.8rem;
+    font-family: var(--font-mono);
+    border: 1px solid var(--border);
+    color: var(--dim);
+  }
+
+  /* Install box */
+  .install-box {
+    display: inline-flex;
+    align-items: center;
+    gap: 1rem;
+    background: var(--terminal-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 0.75rem 1.5rem;
+    font-family: var(--font-mono);
+    font-size: 1rem;
+    color: var(--green);
+    cursor: pointer;
+    transition: border-color 0.2s;
+  }
+  .install-box:hover { border-color: var(--cyan); }
+  .install-box .prompt { color: var(--dim); user-select: none; }
+  .install-box .copy-hint {
+    font-size: 0.75rem;
+    color: var(--dim);
+    font-family: var(--font-sans);
+  }
+
+  /* Section layout */
+  .section {
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 4rem 1.5rem;
+  }
+  .section h2 {
+    font-size: 2rem;
+    font-weight: 700;
+    margin-bottom: 1.5rem;
+    color: var(--white);
+    text-align: center;
+  }
+  .section h2 .accent { color: var(--cyan); }
+
+  /* Terminal mockup */
+  .terminal {
+    background: var(--terminal-bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+    margin: 2rem auto;
+    max-width: 720px;
+  }
+  .terminal-bar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 10px 14px;
+    background: #1a1a2e;
+    border-bottom: 1px solid var(--border);
+  }
+  .terminal-dot {
+    width: 12px; height: 12px;
+    border-radius: 50%;
+  }
+  .terminal-dot.red { background: #ff5f57; }
+  .terminal-dot.yellow { background: #febc2e; }
+  .terminal-dot.green { background: #28c840; }
+  .terminal-title {
+    flex: 1;
+    text-align: center;
+    font-size: 0.75rem;
+    color: var(--dim);
+    font-family: var(--font-mono);
+  }
+  .terminal pre {
+    padding: 1.25rem 1.5rem;
+    font-family: var(--font-mono);
+    font-size: 0.82rem;
+    line-height: 1.55;
+    color: var(--green);
+    overflow-x: auto;
+    white-space: pre;
+    margin: 0;
+  }
+  .terminal pre .cmd { color: var(--cyan); }
+  .terminal pre .dim { color: var(--dim); }
+  .terminal pre .white { color: var(--white); }
+  .terminal pre .yellow { color: #fbbf24; }
+
+  /* Feature cards */
+  .features-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 1.25rem;
+    margin-top: 2rem;
+  }
+  .feature-card {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1.5rem;
+    transition: border-color 0.2s, transform 0.2s;
+  }
+  .feature-card:hover {
+    border-color: var(--cyan);
+    transform: translateY(-2px);
+  }
+  .feature-card .icon {
+    font-size: 1.6rem;
+    margin-bottom: 0.5rem;
+    display: block;
+  }
+  .feature-card h3 {
+    font-size: 1.05rem;
+    margin-bottom: 0.4rem;
+    color: var(--white);
+  }
+  .feature-card p {
+    font-size: 0.88rem;
+    color: var(--dim);
+    line-height: 1.5;
+  }
+
+  /* Commands section */
+  .commands-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 1rem;
+    margin-top: 2rem;
+  }
+  .command-item {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1rem 1.25rem;
+    font-family: var(--font-mono);
+    font-size: 0.85rem;
+  }
+  .command-item code {
+    color: var(--cyan);
+  }
+  .command-item .desc {
+    color: var(--dim);
+    font-family: var(--font-sans);
+    font-size: 0.82rem;
+    margin-top: 0.25rem;
+  }
+
+  /* Pricing table */
+  .pricing-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 1.5rem;
+    font-size: 0.88rem;
+  }
+  .pricing-table th, .pricing-table td {
+    padding: 0.6rem 1rem;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+  }
+  .pricing-table th {
+    color: var(--cyan);
+    font-weight: 600;
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  .pricing-table td { color: var(--dim); }
+  .pricing-table td:first-child { color: var(--white); font-weight: 500; }
+
+  /* CTA */
+  .cta {
+    text-align: center;
+    padding: 4rem 1.5rem;
+  }
+  .cta h2 { margin-bottom: 1rem; }
+  .cta-buttons {
+    display: flex;
+    gap: 1rem;
+    justify-content: center;
+    flex-wrap: wrap;
+    margin-top: 1.5rem;
+  }
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.75rem 1.75rem;
+    border-radius: 8px;
+    font-size: 0.95rem;
+    font-weight: 600;
+    transition: transform 0.2s, box-shadow 0.2s;
+    text-decoration: none;
+  }
+  .btn:hover { transform: translateY(-1px); text-decoration: none; }
+  .btn-primary {
+    background: linear-gradient(135deg, var(--green), var(--cyan));
+    color: var(--bg-dark);
+  }
+  .btn-secondary {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--white);
+  }
+  .btn-secondary:hover { border-color: var(--cyan); }
+
+  /* Footer */
+  footer {
+    text-align: center;
+    padding: 2rem 1.5rem;
+    border-top: 1px solid var(--border);
+    color: var(--dim);
+    font-size: 0.82rem;
+  }
+  footer a { color: var(--cyan); }
+  .footer-links {
+    display: flex;
+    gap: 1.5rem;
+    justify-content: center;
+    margin-bottom: 0.75rem;
+  }
+
+  /* Responsive */
+  @media (max-width: 640px) {
+    .hero h1 { font-size: 2.2rem; }
+    .hero .tagline { font-size: 1.05rem; }
+    .install-box { font-size: 0.85rem; padding: 0.6rem 1rem; }
+    .terminal pre { font-size: 0.7rem; padding: 1rem; }
+    .section h2 { font-size: 1.5rem; }
+  }
+</style>
+</head>
+<body>
+
+<!-- Hero -->
+<section class="hero">
+  <h1>Claude Meter</h1>
+  <p class="tagline">Know exactly what your Claude Code usage costs. Track tokens, estimate costs, and monitor usage — all from your terminal.</p>
+  <div class="badges">
+    <span>Windows</span>
+    <span>macOS</span>
+    <span>Linux</span>
+    <span>Node &ge; 18</span>
+    <span>MIT License</span>
+  </div>
+  <div class="install-box" onclick="navigator.clipboard.writeText('npm install -g @callobuzz/claude-meter')">
+    <span class="prompt">$</span>
+    <span>npm install -g @callobuzz/claude-meter</span>
+    <span class="copy-hint">click to copy</span>
+  </div>
+</section>
+
+<!-- Terminal Demo -->
+<section class="section">
+  <h2>See It <span class="accent">In Action</span></h2>
+  <div class="terminal">
+    <div class="terminal-bar">
+      <span class="terminal-dot red"></span>
+      <span class="terminal-dot yellow"></span>
+      <span class="terminal-dot green"></span>
+      <span class="terminal-title">claude-meter today --compact</span>
+    </div>
+    <pre><span class="cmd">$</span> <span class="white">claude-meter today --compact</span>
+
+<span class="white">Claude Meter</span> <span class="dim">— Today (Mar 22, 2026)</span>
+
+  <span class="dim">Entries:</span> <span class="white">3,241</span> <span class="dim">|</span> <span class="dim">Sessions:</span> <span class="white">28</span>
+
+  <span class="dim">Tokens:</span>   <span class="white">Input 245.3K</span> <span class="dim">|</span> <span class="white">Output 892.1K</span> <span class="dim">|</span> <span class="white">Fresh 1.1M</span>
+  <span class="dim">Cache:</span>    <span class="white">Read 312.5M</span> <span class="dim">|</span> <span class="white">5m 8.2M</span> <span class="dim">|</span> <span class="white">1h 14.7M</span> <span class="dim">|</span> <span class="white">Full 335.4M</span>
+
+  <span class="dim">Models:</span>   <span class="white">opus-4-6 94%</span> <span class="dim">|</span> <span class="white">haiku-4-5 6%</span>
+
+  <span class="yellow">Cost:     $142.38</span> <span class="dim">(opus $134.10 | haiku $8.28)</span>
+
+  <span class="dim">Pricing:  bundled defaults</span></pre>
+  </div>
+
+  <div class="terminal" style="margin-top: 1.5rem;">
+    <div class="terminal-bar">
+      <span class="terminal-dot red"></span>
+      <span class="terminal-dot yellow"></span>
+      <span class="terminal-dot green"></span>
+      <span class="terminal-title">claude-meter this-month</span>
+    </div>
+    <pre><span class="cmd">$</span> <span class="white">claude-meter this-month</span>
+
+<span class="white">&#9556;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9559;
+&#9553;               Claude Meter &#8212; March 2026                &#9553;
+&#9562;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9565;</span>
+
+  <span class="dim">Period:</span>          <span class="white">Mar 1 &#8211; Mar 22, 2026</span>
+  <span class="dim">Files Scanned:</span>   <span class="white">2,568</span>
+  <span class="dim">Entries:</span>         <span class="white">106,461</span>
+
+<span class="dim">&#9484;&#9472; Token Usage &#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9488;</span>
+<span class="dim">&#9474;</span>  <span class="dim">Input Tokens:</span>          <span class="white">5.9M</span>                       <span class="dim">&#9474;</span>
+<span class="dim">&#9474;</span>  <span class="dim">Output Tokens:</span>         <span class="white">11.6M</span>                      <span class="dim">&#9474;</span>
+<span class="dim">&#9474;</span>  <span class="dim">Cache Read:</span>            <span class="white">8.3B</span>                       <span class="dim">&#9474;</span>
+<span class="dim">&#9474;</span>  <span class="dim">Full Total:</span>            <span class="white">8.8B</span>                       <span class="dim">&#9474;</span>
+<span class="dim">&#9492;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9496;</span>
+
+<span class="dim">&#9484;&#9472; Estimated Cost &#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9488;</span>
+<span class="dim">&#9474;</span>  <span class="yellow">Total:              $8,531.68</span>                    <span class="dim">&#9474;</span>
+<span class="dim">&#9474;</span>    <span class="dim">opus-4-6:</span>         <span class="white">$7,882.23</span>                    <span class="dim">&#9474;</span>
+<span class="dim">&#9474;</span>    <span class="dim">haiku-4-5:</span>        <span class="white">$649.45</span>                      <span class="dim">&#9474;</span>
+<span class="dim">&#9492;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9496;</span></pre>
+  </div>
+</section>
+
+<!-- Features -->
+<section class="section">
+  <h2>Features</h2>
+  <div class="features-grid">
+    <div class="feature-card">
+      <span class="icon">&#9201;</span>
+      <h3>Token Tracking</h3>
+      <p>Input, output, cache read, and cache creation tokens with 5-minute and 1-hour granularity.</p>
+    </div>
+    <div class="feature-card">
+      <span class="icon">&#128200;</span>
+      <h3>Per-Model Breakdown</h3>
+      <p>See exactly how usage splits across Opus, Sonnet, and Haiku models.</p>
+    </div>
+    <div class="feature-card">
+      <span class="icon">&#128176;</span>
+      <h3>Exact Cost Estimates</h3>
+      <p>Uses real cache breakdowns from your logs. No guessing, no averaging.</p>
+    </div>
+    <div class="feature-card">
+      <span class="icon">&#128197;</span>
+      <h3>Flexible Time Ranges</h3>
+      <p>Today, this week, this month, custom date ranges, or all time.</p>
+    </div>
+    <div class="feature-card">
+      <span class="icon">&#9889;</span>
+      <h3>Live Watch Mode</h3>
+      <p>Real-time dashboard that auto-refreshes as you work.</p>
+    </div>
+    <div class="feature-card">
+      <span class="icon">&#128187;</span>
+      <h3>Statusline Integration</h3>
+      <p>See costs right inside your Claude Code terminal session.</p>
+    </div>
+    <div class="feature-card">
+      <span class="icon">&#128274;</span>
+      <h3>100% Private</h3>
+      <p>Everything stays local. No network calls, no telemetry, no analytics.</p>
+    </div>
+    <div class="feature-card">
+      <span class="icon">&#127760;</span>
+      <h3>Cross-Platform</h3>
+      <p>Works on Windows, macOS, and Linux with zero configuration needed.</p>
+    </div>
+    <div class="feature-card">
+      <span class="icon">&#128218;</span>
+      <h3>JSON Output</h3>
+      <p>Pipe to jq, feed into scripts, or build your own dashboards.</p>
+    </div>
+  </div>
+</section>
+
+<!-- Commands -->
+<section class="section">
+  <h2>Commands</h2>
+  <div class="commands-list">
+    <div class="command-item">
+      <code>claude-meter today</code>
+      <div class="desc">Today's usage and costs</div>
+    </div>
+    <div class="command-item">
+      <code>claude-meter this-month</code>
+      <div class="desc">Current month summary</div>
+    </div>
+    <div class="command-item">
+      <code>claude-meter watch</code>
+      <div class="desc">Live auto-refreshing dashboard</div>
+    </div>
+    <div class="command-item">
+      <code>claude-meter today --json</code>
+      <div class="desc">Machine-readable JSON output</div>
+    </div>
+    <div class="command-item">
+      <code>claude-meter doctor</code>
+      <div class="desc">Full diagnostics health check</div>
+    </div>
+    <div class="command-item">
+      <code>claude-meter install-statusline</code>
+      <div class="desc">Add cost display to your terminal</div>
+    </div>
+    <div class="command-item">
+      <code>claude-meter range &lt;start&gt; &lt;end&gt;</code>
+      <div class="desc">Custom date range analysis</div>
+    </div>
+    <div class="command-item">
+      <code>claude-meter config</code>
+      <div class="desc">View and manage configuration</div>
+    </div>
+  </div>
+</section>
+
+<!-- Pricing -->
+<section class="section">
+  <h2>Bundled <span class="accent">Pricing</span></h2>
+  <p style="text-align: center; color: var(--dim); margin-bottom: 0.5rem;">Official Anthropic pricing (March 2026). Updated with each release.</p>
+  <div style="overflow-x: auto;">
+    <table class="pricing-table">
+      <thead>
+        <tr>
+          <th>Model</th>
+          <th>Input</th>
+          <th>Output</th>
+          <th>Cache Write 5m</th>
+          <th>Cache Write 1h</th>
+          <th>Cache Read</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td>Opus 4.6</td><td>$5/M</td><td>$25/M</td><td>$6.25/M</td><td>$10/M</td><td>$0.50/M</td></tr>
+        <tr><td>Opus 4.5</td><td>$5/M</td><td>$25/M</td><td>$6.25/M</td><td>$10/M</td><td>$0.50/M</td></tr>
+        <tr><td>Sonnet 4.6</td><td>$3/M</td><td>$15/M</td><td>$3.75/M</td><td>$6/M</td><td>$0.30/M</td></tr>
+        <tr><td>Sonnet 4.5</td><td>$3/M</td><td>$15/M</td><td>$3.75/M</td><td>$6/M</td><td>$0.30/M</td></tr>
+        <tr><td>Haiku 4.5</td><td>$1/M</td><td>$5/M</td><td>$1.25/M</td><td>$2/M</td><td>$0.10/M</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- CTA -->
+<section class="cta">
+  <h2>Get Started</h2>
+  <div class="install-box" onclick="navigator.clipboard.writeText('npm install -g @callobuzz/claude-meter')" style="margin-bottom: 1.5rem;">
+    <span class="prompt">$</span>
+    <span>npm install -g @callobuzz/claude-meter</span>
+    <span class="copy-hint">click to copy</span>
+  </div>
+  <div class="cta-buttons">
+    <a href="https://github.com/callobuzz/claude-meter" class="btn btn-primary">GitHub</a>
+    <a href="https://www.npmjs.com/package/@callobuzz/claude-meter" class="btn btn-secondary">npm</a>
+  </div>
+</section>
+
+<!-- Footer -->
+<footer>
+  <div class="footer-links">
+    <a href="https://github.com/callobuzz/claude-meter">GitHub</a>
+    <a href="https://www.npmjs.com/package/@callobuzz/claude-meter">npm</a>
+    <a href="https://github.com/callobuzz/claude-meter/blob/main/LICENSE">MIT License</a>
+  </div>
+  <p>Claude Meter &mdash; by <a href="https://github.com/callobuzz">callobuzz</a></p>
+</footer>
+
+</body>
+</html>
