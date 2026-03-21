@@ -7,7 +7,7 @@
 Track tokens, estimate costs, and monitor usage — all from your terminal.
 
 [![npm version](https://img.shields.io/npm/v/cob-claude-meter)](https://www.npmjs.com/package/cob-claude-meter)
-[![license](https://img.shields.io/npm/l/cob-claude-meter)](https://github.com/callobuzz/cob-claude-meter/blob/main/LICENSE)
+[![license](https://img.shields.io/badge/license-MIT-green)](https://github.com/callobuzz/cob-claude-meter/blob/main/LICENSE)
 ![platform](https://img.shields.io/badge/platform-windows%20%7C%20macos%20%7C%20linux-blue)
 ![node](https://img.shields.io/badge/node-%3E%3D18-brightgreen)
 
