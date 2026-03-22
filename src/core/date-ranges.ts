@@ -24,58 +24,57 @@ export function getDateRange(
 ): DateRange {
   switch (label) {
     case 'today': {
-      const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+      const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
       return { label, start, end: new Date(now.getTime()) };
     }
 
     case 'yesterday': {
-      const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - 1));
-      const start = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 0, 0, 0, 0));
-      const end = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 23, 59, 59, 999));
+      const start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+      const end = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 23, 59, 59, 999);
       return { label, start, end };
     }
 
     case 'this-week': {
-      // Week starts on Monday (1). getUTCDay(): 0=Sun, 1=Mon, ..., 6=Sat
-      const day = now.getUTCDay();
+      // Week starts on Monday (1). getDay(): 0=Sun, 1=Mon, ..., 6=Sat
+      const day = now.getDay();
       const diff = day === 0 ? 6 : day - 1; // days since Monday
-      const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - diff));
+      const start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - diff);
       return { label, start, end: new Date(now.getTime()) };
     }
 
     case 'last-week': {
-      const day = now.getUTCDay();
+      const day = now.getDay();
       const diff = day === 0 ? 6 : day - 1;
-      const thisMonday = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - diff));
-      const lastMonday = new Date(Date.UTC(thisMonday.getUTCFullYear(), thisMonday.getUTCMonth(), thisMonday.getUTCDate() - 7));
-      const lastSunday = new Date(Date.UTC(thisMonday.getUTCFullYear(), thisMonday.getUTCMonth(), thisMonday.getUTCDate() - 1, 23, 59, 59, 999));
+      const thisMonday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - diff);
+      const lastMonday = new Date(thisMonday.getFullYear(), thisMonday.getMonth(), thisMonday.getDate() - 7);
+      const lastSunday = new Date(thisMonday.getFullYear(), thisMonday.getMonth(), thisMonday.getDate() - 1, 23, 59, 59, 999);
       return { label, start: lastMonday, end: lastSunday };
     }
 
     case 'this-month': {
-      const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+      const start = new Date(now.getFullYear(), now.getMonth(), 1);
       return { label, start, end: new Date(now.getTime()) };
     }
 
     case 'last-month': {
-      const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1));
-      const end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 0, 23, 59, 59, 999));
+      const start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      const end = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59, 999);
       return { label, start, end };
     }
 
     case 'this-year': {
-      const start = new Date(Date.UTC(now.getUTCFullYear(), 0, 1));
+      const start = new Date(now.getFullYear(), 0, 1);
       return { label, start, end: new Date(now.getTime()) };
     }
 
     case 'last30': {
-      const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - 30,
-        now.getUTCHours(), now.getUTCMinutes(), now.getUTCSeconds(), now.getUTCMilliseconds()));
+      const start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 30,
+        now.getHours(), now.getMinutes(), now.getSeconds(), now.getMilliseconds());
       return { label, start, end: new Date(now.getTime()) };
     }
 
     case 'all': {
-      const start = new Date(Date.UTC(2020, 0, 1));
+      const start = new Date(2020, 0, 1);
       return { label, start, end: new Date(now.getTime()) };
     }
 
