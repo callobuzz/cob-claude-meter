@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { dirname, join } from 'node:path';
+import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { setPricingRoot } from './core/pricing.js';
 
@@ -7,6 +8,8 @@ import { setPricingRoot } from './core/pricing.js';
 const __filename = fileURLToPath(import.meta.url);
 const packageRoot = join(dirname(__filename), '..');
 setPricingRoot(packageRoot);
+
+const pkg = JSON.parse(readFileSync(join(packageRoot, 'package.json'), 'utf-8'));
 
 import { Command } from 'commander';
 import { runReport } from './commands/report.js';
@@ -24,7 +27,7 @@ const program = new Command();
 program
   .name('claude-meter')
   .description('Claude Code token usage tracking and cost estimation')
-  .version('0.1.0');
+  .version(pkg.version);
 
 // Time commands
 const timeCommands = [
