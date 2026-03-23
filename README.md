@@ -296,4 +296,4 @@ Built by [Call O Buzz Services](https://callobuzz.com) — AI-driven software de
 
 ## License
 
-MIT — by [Call O Buzz](https://callobuzz.com)
+MIT
