@@ -290,6 +290,10 @@ npm test
 
 ---
 
+## About
+
+Built by [Call O Buzz Services](https://callobuzz.com) — AI-driven software development, SaaS solutions, and open source tools.
+
 ## License
 
 MIT — by [Call O Buzz](https://callobuzz.com)
