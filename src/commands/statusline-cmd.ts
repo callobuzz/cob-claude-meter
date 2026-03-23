@@ -30,6 +30,10 @@ interface StdinData {
   };
   workspace?: { current_dir?: string };
   cost?: { total_cost_usd?: number };
+  rate_limits?: {
+    five_hour?: { used_percentage?: number; resets_at?: number };
+    seven_day?: { used_percentage?: number; resets_at?: number };
+  };
 }
 
 function getGitBranch(cwd?: string): string | null {
@@ -165,6 +169,50 @@ function getHistoricalLine(cacheManager: CacheManager, noColor?: boolean): strin
   return parts.join(` ${DIM}|${RESET} `);
 }
 
+function buildRateLimitLine(
+  rateLimits: NonNullable<StdinData['rate_limits']>,
+  noColor?: boolean,
+): string | null {
+  const GREEN = noColor ? '' : '\x1b[92m';
+  const YELLOW = noColor ? '' : '\x1b[93m';
+  const RED = noColor ? '' : '\x1b[91m';
+  const DIM = noColor ? '' : '\x1b[37m';
+  const RESET = noColor ? '' : '\x1b[0m';
+
+  const parts: string[] = [];
+
+  const windows: Array<{
+    data: { used_percentage?: number; resets_at?: number } | undefined;
+    label: '5h' | '7d';
+  }> = [
+    { data: rateLimits.five_hour, label: '5h' },
+    { data: rateLimits.seven_day, label: '7d' },
+  ];
+
+  for (const { data, label } of windows) {
+    if (!data || data.used_percentage == null) continue;
+
+    const pct = data.used_percentage;
+    let barColor = GREEN;
+    if (pct >= 80) barColor = RED;
+    else if (pct >= 50) barColor = YELLOW;
+
+    const bar = buildBlockBar(pct, 8);
+    let timePart = '';
+    if (data.resets_at != null) {
+      const timeStr = formatTimeRemaining(data.resets_at, label);
+      if (timeStr) {
+        timePart = ` (${timeStr})`;
+      }
+    }
+
+    parts.push(`${barColor}${bar}${RESET} ${pct}%${timePart}`);
+  }
+
+  if (parts.length === 0) return null;
+  return `${DIM}Usage${RESET} ${parts.join(` ${DIM}|${RESET} `)}`;
+}
+
 export async function renderStatusline(
   stdinData: StdinData,
   mode: StatuslineMode,
@@ -230,6 +278,14 @@ export async function renderStatusline(
     // Line 2: historical meter data (colors built-in)
     const line2 = getHistoricalLine(cacheManager, options?.noColor);
 
+    // Line 3: rate limit usage (optional)
+    const rateLimitLine = stdinData.rate_limits
+      ? buildRateLimitLine(stdinData.rate_limits, options?.noColor)
+      : null;
+
+    if (rateLimitLine) {
+      return `${line1}\n${line2}\n${rateLimitLine}\n`;
+    }
     return `${line1}\n${line2}\n`;
   }
 
