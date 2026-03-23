@@ -31,8 +31,8 @@ interface StdinData {
   workspace?: { current_dir?: string };
   cost?: { total_cost_usd?: number };
   rate_limits?: {
-    five_hour?: { used_percentage?: number; resets_at?: number };
-    seven_day?: { used_percentage?: number; resets_at?: number };
+    five_hour?: { used_percentage?: number; utilization?: number; resets_at?: number };
+    seven_day?: { used_percentage?: number; utilization?: number; resets_at?: number };
   };
 }
 
@@ -182,7 +182,7 @@ function buildRateLimitLine(
   const parts: string[] = [];
 
   const windows: Array<{
-    data: { used_percentage?: number; resets_at?: number } | undefined;
+    data: { used_percentage?: number; utilization?: number; resets_at?: number } | undefined;
     label: '5h' | '7d';
   }> = [
     { data: rateLimits.five_hour, label: '5h' },
@@ -190,9 +190,9 @@ function buildRateLimitLine(
   ];
 
   for (const { data, label } of windows) {
-    if (!data || data.used_percentage == null) continue;
-
-    const pct = data.used_percentage;
+    if (!data) continue;
+    const pct = data.used_percentage ?? data.utilization;
+    if (pct == null) continue;
     let barColor = GREEN;
     if (pct >= 80) barColor = RED;
     else if (pct >= 50) barColor = YELLOW;

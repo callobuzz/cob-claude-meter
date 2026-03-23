@@ -228,4 +228,25 @@ describe('rate limit line', () => {
     expect(lines[2]).toContain('/ 7d');
     expect(lines[2]).not.toContain('/ 5h');
   });
+
+  it('handles utilization field name (alternative to used_percentage)', async () => {
+    const data = {
+      ...MOCK_STDIN,
+      rate_limits: {
+        five_hour: {
+          utilization: 12,
+          resets_at: Math.floor(Date.now() / 1000) + 3600,
+        },
+        seven_day: {
+          utilization: 8,
+          resets_at: Math.floor(Date.now() / 1000) + 48 * 3600,
+        },
+      },
+    };
+    const output = await renderStatusline(data as any, 'replace', { noColor: true });
+    const lines = output.split('\n').filter(Boolean);
+    expect(lines.length).toBe(3);
+    expect(lines[2]).toContain('12%');
+    expect(lines[2]).toContain('8%');
+  });
 });
