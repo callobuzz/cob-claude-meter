@@ -58,6 +58,29 @@ export function buildBlockBar(percentage: number, width = 8): string {
   return '█'.repeat(filled) + '░'.repeat(empty);
 }
 
+export function formatTimeRemaining(
+  resetsAtEpoch: number,
+  window: '5h' | '7d',
+  nowMs: number = Date.now(),
+): string | null {
+  const msRemaining = resetsAtEpoch * 1000 - nowMs;
+  if (msRemaining <= 0) return null;
+
+  const totalMinutes = Math.floor(msRemaining / (1000 * 60));
+
+  if (window === '5h') {
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
+    return `${hours}h ${minutes}m / 5h`;
+  }
+
+  // 7d window
+  const totalHours = Math.floor(totalMinutes / 60);
+  const days = Math.floor(totalHours / 24);
+  const hours = totalHours % 24;
+  return `${days}d ${hours}h / 7d`;
+}
+
 function formatTokensCompact(n: number): string {
   if (n === 0) return '0';
   if (n < 1000) return String(n);

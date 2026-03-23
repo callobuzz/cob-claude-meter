@@ -82,3 +82,37 @@ describe('buildBlockBar', () => {
     expect(buildBlockBar(50, 8)).toBe('████░░░░');
   });
 });
+
+describe('formatTimeRemaining', () => {
+  it('formats 5-hour window time remaining', async () => {
+    const { formatTimeRemaining } = await import('../../src/commands/statusline-cmd.js');
+    const now = Math.floor(Date.now() / 1000) * 1000; // align to second boundary
+    const resetsAt = Math.floor(now / 1000) + (4 * 3600 + 35 * 60); // 4h 35m from now
+    const result = formatTimeRemaining(resetsAt, '5h', now);
+    expect(result).toBe('4h 35m / 5h');
+  });
+
+  it('formats 7-day window time remaining', async () => {
+    const { formatTimeRemaining } = await import('../../src/commands/statusline-cmd.js');
+    const now = Math.floor(Date.now() / 1000) * 1000; // align to second boundary
+    const resetsAt = Math.floor(now / 1000) + (47 * 3600); // 1d 23h from now
+    const result = formatTimeRemaining(resetsAt, '7d', now);
+    expect(result).toBe('1d 23h / 7d');
+  });
+
+  it('returns null when resets_at is in the past', async () => {
+    const { formatTimeRemaining } = await import('../../src/commands/statusline-cmd.js');
+    const now = Date.now();
+    const resetsAt = Math.floor(now / 1000) - 60; // 1 min ago
+    const result = formatTimeRemaining(resetsAt, '5h', now);
+    expect(result).toBeNull();
+  });
+
+  it('formats zero remaining as 0h 0m for 5h window', async () => {
+    const { formatTimeRemaining } = await import('../../src/commands/statusline-cmd.js');
+    const now = Date.now();
+    const resetsAt = Math.floor(now / 1000) + 30; // 30 seconds from now
+    const result = formatTimeRemaining(resetsAt, '5h', now);
+    expect(result).toBe('0h 0m / 5h');
+  });
+});
