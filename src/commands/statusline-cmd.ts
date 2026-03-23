@@ -52,6 +52,12 @@ function buildProgressBar(percentage: number, width = 20): string {
   return '[' + '='.repeat(filled) + ' '.repeat(empty) + ']';
 }
 
+export function buildBlockBar(percentage: number, width = 8): string {
+  const filled = Math.round((percentage / 100) * width);
+  const empty = width - filled;
+  return '█'.repeat(filled) + '░'.repeat(empty);
+}
+
 function formatTokensCompact(n: number): string {
   if (n === 0) return '0';
   if (n < 1000) return String(n);

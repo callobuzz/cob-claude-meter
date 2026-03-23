@@ -65,3 +65,20 @@ describe('renderStatusline', () => {
     expect(output.length).toBeGreaterThan(0);
   });
 });
+
+describe('buildBlockBar', () => {
+  it('returns all empty blocks at 0%', async () => {
+    const { buildBlockBar } = await import('../../src/commands/statusline-cmd.js');
+    expect(buildBlockBar(0, 8)).toBe('░░░░░░░░');
+  });
+
+  it('returns all filled blocks at 100%', async () => {
+    const { buildBlockBar } = await import('../../src/commands/statusline-cmd.js');
+    expect(buildBlockBar(100, 8)).toBe('████████');
+  });
+
+  it('returns proportional fill at 50%', async () => {
+    const { buildBlockBar } = await import('../../src/commands/statusline-cmd.js');
+    expect(buildBlockBar(50, 8)).toBe('████░░░░');
+  });
+});
