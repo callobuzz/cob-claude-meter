@@ -59,6 +59,7 @@ Claude Meter reads your local Claude Code logs and gives you **instant answers**
 | **Time Ranges** | Today, this week, this month, custom ranges |
 | **Live Watch Mode** | Real-time dashboard with auto-refresh |
 | **Claude Code Statusline** | See costs right in your terminal |
+| **Rate Limit Bars** | 5-hour and 7-day usage with time remaining |
 | **JSON Output** | Pipe to jq, scripts, dashboards |
 | **Cross-Platform** | Windows, macOS, Linux |
 | **Zero Config** | Auto-discovers your Claude Code logs |
@@ -190,8 +191,11 @@ Claude Meter — Today (Mar 22, 2026)
 
 ```
 Opus [===========         ] 45% 120k/200k git:main | my-project
-Today: 1.2M ~$85 | Month: 47.5M ~$1.2K | Opus 92% Haiku 8%
+Today: 1.2M ~$85 | Month: 47.5M ~$1.2K
+Usage ██░░░░░░ 5% (4h 35m / 5h) | █░░░░░░░ 3% (1d 23h / 7d)
 ```
+
+The third line shows your Claude.ai rate limit usage with block-style progress bars and time remaining. Automatically hidden for API users or when rate limit data isn't available.
 
 ---
 

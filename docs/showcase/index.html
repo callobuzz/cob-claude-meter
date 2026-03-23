@@ -387,7 +387,20 @@
     <h3 style="font-size: 1rem; color: var(--cyan); margin-bottom: 0.75rem;">Monthly Usage Report</h3>
     <img src="cob-claude-meter-this-month.png" alt="Claude Meter monthly usage report" style="width: 100%; border-radius: 10px; border: 1px solid var(--border); margin-bottom: 2rem;">
     <h3 style="font-size: 1rem; color: var(--cyan); margin-bottom: 0.75rem;">Claude Code Statusline</h3>
-    <img src="cob-claude-statusline.png" alt="Claude Meter statusline in Claude Code" style="width: 100%; border-radius: 10px; border: 1px solid var(--border);">
+    <img src="cob-claude-statusline.png" alt="Claude Meter statusline in Claude Code" style="width: 100%; border-radius: 10px; border: 1px solid var(--border); margin-bottom: 2rem;">
+    <h3 style="font-size: 1rem; color: var(--cyan); margin-bottom: 0.75rem;">Statusline with Rate Limit Bars</h3>
+    <div class="terminal">
+      <div class="terminal-bar">
+        <span class="terminal-dot red"></span>
+        <span class="terminal-dot yellow"></span>
+        <span class="terminal-dot green"></span>
+        <span class="terminal-title">statusline — replace mode</span>
+      </div>
+      <pre><span class="white">Sonnet 4.6</span> <span class="cmd">[======              ]</span> <span class="yellow">31%</span> <span class="white">62k/200k</span> <span class="dim">git:main</span> <span class="dim">|</span> <span class="cmd">my-project</span>
+<span class="dim">Today:</span> <span class="cmd">1.2M</span> <span class="dim">~</span>$85.20 <span class="dim">|</span> <span class="dim">Month:</span> <span class="cmd">47.5M</span> <span class="dim">~</span><span class="yellow">$1.2K</span>
+<span class="dim">Usage</span> <span style="color:#4ade80">██░░░░░░</span> 5% <span class="dim">(</span>4h 35m / 5h<span class="dim">)</span> <span class="dim">|</span> <span style="color:#4ade80">█░░░░░░░</span> 3% <span class="dim">(</span>1d 23h / 7d<span class="dim">)</span></pre>
+    </div>
+    <p style="text-align: center; color: var(--dim); margin-top: 0.75rem; font-size: 0.85rem;">Rate limit bars show your 5-hour and 7-day usage windows with time remaining. Auto-hidden for API users.</p>
   </div>
 </section>
 
@@ -423,7 +436,7 @@
     <div class="feature-card">
       <span class="icon">&#128187;</span>
       <h3>Statusline Integration</h3>
-      <p>See costs right inside your Claude Code terminal session.</p>
+      <p>See costs and rate limit usage right inside your Claude Code terminal session.</p>
     </div>
     <div class="feature-card">
       <span class="icon">&#128274;</span>
