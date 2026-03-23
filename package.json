@@ -1,6 +1,6 @@
 {
   "name": "cob-claude-meter",
-  "version": "0.1.8",
+  "version": "0.1.9",
   "description": "CLI tool for Claude Code token usage tracking and cost estimation",
   "type": "module",
   "main": "dist/index.js",
