@@ -2,9 +2,10 @@
 
 # Claude Meter
 
-**Know exactly what your Claude Code usage costs.**
+**Know exactly what your Claude Code usage costs — and how long it took.**
 
-Track tokens, estimate costs, and monitor usage — all from your terminal.
+Track tokens, estimate costs, and measure real working hours — from your terminal
+or a filterable web dashboard.
 
 [![npm version](https://img.shields.io/npm/v/cob-claude-meter)](https://www.npmjs.com/package/cob-claude-meter)
 [![license](https://img.shields.io/badge/license-MIT-green)](https://github.com/callobuzz/cob-claude-meter/blob/main/LICENSE)
@@ -46,9 +47,11 @@ claude-meter serve
 - **No visibility** into historical Claude Code token usage
 - **No cost tracking** — you don't know what you're spending
 - **No per-model breakdown** — which model burns most tokens?
+- **No time tracking** — how many hours did that project actually take?
 - **Built-in `/stats` is limited** — no history, no export, no detail
 
-Claude Meter reads your local Claude Code logs and gives you **instant answers**.
+Claude Meter reads your local Claude Code logs and gives you **instant answers** —
+for today and for every session you have already run.
 
 ---
 
@@ -61,8 +64,9 @@ Claude Meter reads your local Claude Code logs and gives you **instant answers**
 | **Exact Cost Estimates** | Uses real cache breakdowns — no guessing |
 | **Time Ranges** | Today, this week, this month, custom ranges |
 | **Work-Hours Tracking** | Active time per project and per day, idle time excluded |
-| **Web Dashboard** | Filterable, searchable UI — run it in Docker, open a URL |
-| **Client Tagging** | Tag projects with a client, then filter and roll up by client |
+| **Multi-Client Billing** | Tag projects by client, filter and roll up hours per client |
+| **Web Dashboard** | Filterable, searchable UI — run it with or without Docker |
+| **Retroactive** | Works on logs you already have — no timer, nothing to start |
 | **Live Watch Mode** | Real-time dashboard with auto-refresh |
 | **Claude Code Statusline** | See costs right in your terminal |
 | **Rate Limit Bars** | 5-hour and 7-day usage with time remaining |
@@ -181,13 +185,106 @@ Assign a client and free-form tags to any project from the dashboard, then filte
 and roll up by client. Tags live in `tags.json` inside the data directory,
 separate from the log-derived numbers, so they survive rescans and rebuilds.
 
+### Who this is for
+
+Developers juggling **several clients or projects at once** — especially anyone
+billing by the hour or trying to understand where their time actually goes.
+
+You already generate the data by working. This turns it into a defensible picture
+of how much time went into each client, without a timer to start, stop or forget.
+
+| Use case | How |
+|---|---|
+| **Bill a client by the hour** | Tag projects with a client, filter by client, read the month's hours |
+| **Multi-client time split** | Clients tab — hours and share of total per client |
+| **Freelance timesheets** | Per-day hours per project, reconstructed from work you already did |
+| **Productivity check** | Timeline grouped by day or week — where the hours went |
+| **Plan and quote** | "That feature took 31 hours" from real data instead of memory |
+| **Spot overwork** | Wall-clock hours per day; a 14-hour day is visible immediately |
+
+Because it reads logs you already have, all of this works for **past** work from
+the day you install it — there is nothing to start recording. Install it today and
+last month is already there.
+
+### How accurate is it?
+
+**Treat it as a fair, defensible estimate — not a stopwatch.** It measures when
+your Claude Code sessions were actively producing output, which is a good proxy
+for time worked, but it is a proxy:
+
+- **Not counted:** thinking away from the terminal, meetings, reading docs,
+  reviewing code in your editor, anything longer than the idle cutoff
+- **Counted:** time Claude spends working while you wait, including long tool
+  runs and builds under the cutoff
+- **Sensitive to one setting:** the idle cutoff. At 2 minutes a month reads much
+  lower than at 10 — pick one and stay on it so periods stay comparable
+
+For hourly billing, the honest use is as a **floor and a sanity check** — evidence
+that a project consumed roughly N hours — rather than an invoice generated
+automatically. It is far closer to reality than reconstructing a month from
+memory, which is the usual alternative.
+
 ---
 
-## Docker
+## Running the Dashboard
+
+Two ways to run it. They are independent and don't know about each other, so you
+can use either — or both, on different ports.
+
+| | Without Docker | With Docker |
+|---|---|---|
+| Command | `claude-meter serve` | `docker compose up -d` |
+| Needs Docker Desktop | no | yes |
+| Data location | `~/.claude-meter/` | named volume `claude-meter-data` |
+| Timezone | your OS timezone, automatic | set `TZ` yourself |
+| Survives reboot | start it again | auto-starts with Docker |
+| Best for | quick local use | always-on, set and forget |
+
+### Option A — Without Docker
 
 ```bash
-docker compose up -d       # then open http://localhost:4317
+npm install -g cob-claude-meter
+claude-meter serve
 ```
+
+Open **http://127.0.0.1:4317**. That's the whole setup — logs are auto-discovered,
+and the timezone comes from your OS.
+
+```bash
+claude-meter serve --port 8080          # different port
+claude-meter serve --host 0.0.0.0       # reachable from your LAN
+claude-meter serve --data-dir ./meter   # keep tags/cache somewhere else
+```
+
+Stop it with `Ctrl+C`. Nothing runs in the background; start it again when you
+want it. Your tags persist in `~/.claude-meter/tags.json`.
+
+To keep it running permanently without Docker, use your OS service manager
+(`pm2 start "claude-meter serve"`, a systemd unit, or a Windows Task Scheduler
+entry set to run at logon).
+
+### Option B — With Docker
+
+```bash
+cp .env.example .env      # then edit it — see below
+docker compose up -d
+```
+
+Open **http://localhost:4317**. The container is set to `restart: unless-stopped`,
+so it comes back automatically whenever Docker Desktop starts.
+
+Edit `.env` before the first run:
+
+```bash
+CLAUDE_LOGS_DIR=C:/Users/YOU/.claude/projects   # forward slashes on Windows
+CLAUDE_METER_PORT=4317
+TZ=Asia/Kolkata                                 # your timezone — see warning below
+```
+
+> **Set `TZ` to your real timezone.** Day boundaries are computed in local time.
+> Leaving the container on UTC pushes evening work onto the previous day and
+> quietly corrupts every daily total. The image ships `tzdata` so any standard
+> zone name works.
 
 `docker-compose.yml` mounts your session logs **read-only** and keeps tags plus
 the scan cache in a named volume:
@@ -198,22 +295,62 @@ volumes:
   - claude-meter-data:/data
 ```
 
-Set `TZ` to your own timezone — day boundaries are computed in local time, so a
-container left on UTC will split your evenings across the wrong dates:
-
-```bash
-TZ=Asia/Kolkata CLAUDE_METER_PORT=4317 docker compose up -d
-```
-
 | Variable | Purpose | Default |
 |---|---|---|
-| `CLAUDE_METER_LOG_PATHS` | Log directories (`;` or `:` separated) | `/logs` |
-| `CLAUDE_METER_DATA_DIR` | Tags + cache location | `/data` |
-| `HOST` / `PORT` | Bind address and port | `0.0.0.0` / `4317` |
+| `CLAUDE_LOGS_DIR` | Host path to your Claude Code logs | `$HOME/.claude/projects` |
+| `CLAUDE_METER_PORT` | Host port to publish | `4317` |
+| `CLAUDE_METER_LOG_PATHS` | Log directories inside the container (`;` or `:` separated) | `/logs` |
+| `CLAUDE_METER_DATA_DIR` | Tags + cache location inside the container | `/data` |
+| `HOST` / `PORT` | Bind address and port inside the container | `0.0.0.0` / `4317` |
 | `TZ` | Timezone for day boundaries | `UTC` |
 
-Scans are cached per file on mtime + size, so only changed sessions are re-read —
-a cold scan of ~500 MB of logs takes a few seconds, warm reloads are near-instant.
+### Managing the container
+
+```bash
+docker compose stop            # pause — page goes offline, data untouched
+docker compose start           # resume
+
+docker compose down            # DELETE the container — data still safe
+docker compose up -d           # recreate it, tags and cache intact
+
+docker compose up -d --build   # rebuild after changing the code
+docker compose logs -f         # follow the logs
+docker compose ps              # check status
+
+docker compose down -v         # DELETE container AND volume — tags lost
+```
+
+Only the last one destroys anything. Deleting the container is safe because tags
+and cache live in the volume, not the container.
+
+### What your data is worth
+
+| Data | Where | If the volume is deleted |
+|---|---|---|
+| Session logs | your machine, mounted **read-only** | untouched — no Docker action can harm them |
+| `tags.json` | volume / `~/.claude-meter/` | **gone for good** — the only irreplaceable file |
+| `timeline-cache.json` | volume / `~/.claude-meter/` | gone, rebuilds itself on the next scan |
+
+Worst case you re-tag your projects. The read-only mount guarantees your actual
+Claude Code history is never written to.
+
+### Performance
+
+Scans are cached per file on mtime + size, so only sessions that changed get
+re-read. A cold scan of ~500 MB of logs takes a few seconds; warm reloads are
+under 100 ms. The cache survives restarts.
+
+### Troubleshooting
+
+| Symptom | Cause and fix |
+|---|---|
+| Page won't load | Container stopped or Docker Desktop is off — `docker compose ps`, then `docker compose start` |
+| Days look shifted | `TZ` not set or wrong — fix `.env`, then `docker compose up -d` |
+| Port already in use | Something else owns the port. Change `CLAUDE_METER_PORT`, or find the owner — a stray `claude-meter serve` on the host will win over Docker on `127.0.0.1` |
+| "No log directories found" | Set `CLAUDE_LOGS_DIR` (Docker) or `claude-meter config --set logPaths='["/path"]'` |
+| Hours look too low | Raise the idle cutoff in the header dropdown — long unattended builds may exceed it |
+| Hours look too high | Lower the idle cutoff, or read wall-clock instead of summed if you run several terminals |
+| Toast says logs were skipped | One or more logs were unreadable and totals are incomplete — check `docker compose logs` |
 
 ---
 

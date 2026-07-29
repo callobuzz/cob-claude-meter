@@ -1,7 +1,7 @@
 {
   "name": "cob-claude-meter",
-  "version": "0.1.9",
-  "description": "CLI tool for Claude Code token usage tracking and cost estimation",
+  "version": "0.2.0",
+  "description": "CLI and web dashboard for Claude Code token usage, cost estimation and work-hours tracking",
   "type": "module",
   "main": "dist/index.js",
   "bin": {
@@ -31,7 +31,12 @@
     "cli",
     "anthropic",
     "statusline",
-    "meter"
+    "meter",
+    "time-tracking",
+    "work-hours",
+    "timesheet",
+    "dashboard",
+    "docker"
   ],
   "repository": {
     "type": "git",
