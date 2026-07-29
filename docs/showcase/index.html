@@ -3,301 +3,433 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Claude Meter — Know exactly what your Claude Code usage costs</title>
+<title>Claude Meter — Track what Claude Code costs you, and how long you actually worked</title>
+<meta name="description" content="Local CLI and web dashboard for Claude Code: token usage, cost estimation, and work-hours tracking per project and client. Nothing leaves your machine.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
+  /* Obsidian & Jade — the same tokens the app dashboard ships with. */
   :root {
-    --bg-dark: #0a0a1a;
-    --bg-mid: #12122a;
-    --bg-light: #1a1a3a;
-    --green: #4ade80;
-    --cyan: #22d3ee;
-    --white: #e2e8f0;
-    --dim: #94a3b8;
-    --terminal-bg: #0c0c1e;
-    --card-bg: #14142e;
-    --border: #2a2a4a;
-    --font-mono: 'Courier New', 'Consolas', 'Monaco', monospace;
-    --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    --bg: #07080c;
+    --surface-1: #0e1117;
+    --surface-2: #141821;
+    --surface-3: #1b212c;
+    --border: #1b2130;
+    --border-strong: #2b3446;
+
+    --text-primary: #e8edf6;
+    --text-secondary: #9aa6b8;
+    --text-muted: #647083;
+
+    --jade: #0faa88;
+    --jade-lift: #2fe0b0;
+    --iolite: #8073ff;
+    --iolite-lift: #a79cff;
+    --amber: #d8a02c;
+
+    --font-display: 'Sora', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    --font-mono: 'IBM Plex Mono', 'Consolas', 'Monaco', monospace;
   }
 
   html { scroll-behavior: smooth; }
 
   body {
-    background: linear-gradient(180deg, var(--bg-dark) 0%, var(--bg-light) 50%, var(--bg-dark) 100%);
-    color: var(--white);
-    font-family: var(--font-sans);
+    background: var(--bg);
+    background-image:
+      radial-gradient(ellipse 80% 50% at 50% -10%, rgba(15, 170, 136, 0.10), transparent 70%),
+      radial-gradient(ellipse 60% 40% at 85% 15%, rgba(128, 115, 255, 0.07), transparent 70%);
+    background-repeat: no-repeat;
+    color: var(--text-primary);
+    font-family: var(--font-display);
+    font-weight: 400;
     line-height: 1.6;
     min-height: 100vh;
+    -webkit-font-smoothing: antialiased;
   }
 
-  a { color: var(--cyan); text-decoration: none; }
+  a { color: var(--jade-lift); text-decoration: none; }
   a:hover { text-decoration: underline; }
 
-  /* Hero */
-  .hero {
-    text-align: center;
-    padding: 6rem 1.5rem 4rem;
-    background: radial-gradient(ellipse at 50% 0%, rgba(34, 211, 238, 0.08) 0%, transparent 60%);
-  }
+  /* ---- Hero ---- */
+  .hero { text-align: center; padding: 6rem 1.5rem 3.5rem; }
   .hero h1 {
-    font-size: 3.5rem;
+    font-size: clamp(2.4rem, 7vw, 4rem);
     font-weight: 800;
-    letter-spacing: -0.02em;
-    margin-bottom: 0.5rem;
-    background: linear-gradient(135deg, var(--green), var(--cyan));
+    letter-spacing: -0.035em;
+    margin-bottom: 0.75rem;
+    background: linear-gradient(120deg, var(--jade-lift) 10%, var(--iolite-lift) 90%);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
   }
   .hero .tagline {
-    font-size: 1.35rem;
-    color: var(--dim);
-    max-width: 540px;
+    font-size: clamp(1.02rem, 2.2vw, 1.25rem);
+    color: var(--text-secondary);
+    max-width: 620px;
     margin: 0 auto 2rem;
+    font-weight: 400;
   }
-  .hero .badges {
-    display: flex;
-    gap: 0.5rem;
-    justify-content: center;
-    flex-wrap: wrap;
-    margin-bottom: 2.5rem;
+  .hero .tagline strong { color: var(--text-primary); font-weight: 600; }
+  .badges {
+    display: flex; gap: 0.5rem; justify-content: center;
+    flex-wrap: wrap; margin-bottom: 2.25rem;
   }
-  .hero .badges span {
-    display: inline-block;
-    padding: 0.3rem 0.8rem;
+  .badges span {
+    padding: 0.3rem 0.85rem;
     border-radius: 999px;
-    font-size: 0.8rem;
+    font-size: 0.76rem;
     font-family: var(--font-mono);
-    border: 1px solid var(--border);
-    color: var(--dim);
+    border: 1px solid var(--border-strong);
+    background: var(--surface-1);
+    color: var(--text-secondary);
   }
 
-  /* Install box */
   .install-box {
-    display: inline-flex;
-    align-items: center;
-    gap: 1rem;
-    background: var(--terminal-bg);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 0.75rem 1.5rem;
-    font-family: var(--font-mono);
-    font-size: 1rem;
-    color: var(--green);
-    cursor: pointer;
-    transition: border-color 0.2s;
-  }
-  .install-box:hover { border-color: var(--cyan); }
-  .install-box .prompt { color: var(--dim); user-select: none; }
-  .install-box .copy-hint {
-    font-size: 0.75rem;
-    color: var(--dim);
-    font-family: var(--font-sans);
-  }
-
-  /* Section layout */
-  .section {
-    max-width: 960px;
-    margin: 0 auto;
-    padding: 4rem 1.5rem;
-  }
-  .section h2 {
-    font-size: 2rem;
-    font-weight: 700;
-    margin-bottom: 1.5rem;
-    color: var(--white);
-    text-align: center;
-  }
-  .section h2 .accent { color: var(--cyan); }
-
-  /* Terminal mockup */
-  .terminal {
-    background: var(--terminal-bg);
-    border: 1px solid var(--border);
+    display: inline-flex; align-items: center; gap: 1rem;
+    background: var(--surface-1);
+    border: 1px solid var(--border-strong);
     border-radius: 10px;
+    padding: 0.8rem 1.4rem;
+    font-family: var(--font-mono);
+    font-size: 0.95rem;
+    color: var(--jade-lift);
+    cursor: pointer;
+    transition: border-color 0.2s, background 0.2s;
+  }
+  .install-box:hover { border-color: var(--jade); background: var(--surface-2); }
+  .install-box .prompt { color: var(--text-muted); user-select: none; }
+  .install-box .copy-hint {
+    font-size: 0.72rem; color: var(--text-muted); font-family: var(--font-display);
+  }
+
+  /* ---- Sections ---- */
+  .section { max-width: 1000px; margin: 0 auto; padding: 4rem 1.5rem; }
+  .section h2 {
+    font-size: clamp(1.5rem, 3.5vw, 2rem);
+    font-weight: 700; letter-spacing: -0.02em;
+    margin-bottom: 0.5rem; text-align: center;
+  }
+  .section h2 .accent { color: var(--jade-lift); }
+  .section .lede {
+    text-align: center; color: var(--text-secondary);
+    max-width: 620px; margin: 0 auto 2rem; font-size: 0.95rem;
+  }
+  .eyebrow {
+    display: block; text-align: center; font-family: var(--font-mono);
+    font-size: 0.72rem; letter-spacing: 0.16em; text-transform: uppercase;
+    color: var(--jade); margin-bottom: 0.6rem;
+  }
+
+  /* ---- Terminal mockup ---- */
+  .terminal {
+    background: var(--surface-1);
+    border: 1px solid var(--border);
+    border-radius: 12px;
     overflow: hidden;
-    margin: 2rem auto;
-    max-width: 720px;
+    margin: 1.5rem auto 0;
+    max-width: 760px;
   }
   .terminal-bar {
-    display: flex;
-    align-items: center;
-    gap: 6px;
+    display: flex; align-items: center; gap: 6px;
     padding: 10px 14px;
-    background: #1a1a2e;
+    background: var(--surface-2);
     border-bottom: 1px solid var(--border);
   }
-  .terminal-dot {
-    width: 12px; height: 12px;
-    border-radius: 50%;
-  }
-  .terminal-dot.red { background: #ff5f57; }
-  .terminal-dot.yellow { background: #febc2e; }
-  .terminal-dot.green { background: #28c840; }
+  .terminal-dot { width: 11px; height: 11px; border-radius: 50%; }
+  .terminal-dot.red { background: #ee4e66; }
+  .terminal-dot.yellow { background: var(--amber); }
+  .terminal-dot.green { background: var(--jade); }
   .terminal-title {
-    flex: 1;
-    text-align: center;
-    font-size: 0.75rem;
-    color: var(--dim);
-    font-family: var(--font-mono);
+    flex: 1; text-align: center; font-size: 0.72rem;
+    color: var(--text-muted); font-family: var(--font-mono);
   }
   .terminal pre {
     padding: 1.25rem 1.5rem;
     font-family: var(--font-mono);
-    font-size: 0.82rem;
-    line-height: 1.55;
-    color: var(--green);
-    overflow-x: auto;
-    white-space: pre;
-    margin: 0;
+    font-size: 0.8rem; line-height: 1.6;
+    color: var(--jade-lift);
+    overflow-x: auto; white-space: pre; margin: 0;
   }
-  .terminal pre .cmd { color: var(--cyan); }
-  .terminal pre .dim { color: var(--dim); }
-  .terminal pre .white { color: var(--white); }
-  .terminal pre .yellow { color: #fbbf24; }
+  .terminal pre .cmd { color: var(--iolite-lift); }
+  .terminal pre .dim { color: var(--text-muted); }
+  .terminal pre .white { color: var(--text-primary); }
+  .terminal pre .amber { color: var(--amber); }
 
-  /* Feature cards */
-  .features-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-    gap: 1.25rem;
-    margin-top: 2rem;
-  }
-  .feature-card {
-    background: var(--card-bg);
+  /* ---- Dashboard mockup ---- */
+  .browser {
+    background: var(--surface-1);
     border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 1.5rem;
-    transition: border-color 0.2s, transform 0.2s;
+    border-radius: 12px;
+    overflow: hidden;
+    margin: 1.5rem auto 0;
+    max-width: 860px;
   }
-  .feature-card:hover {
-    border-color: var(--cyan);
-    transform: translateY(-2px);
-  }
-  .feature-card .icon {
-    font-size: 1.6rem;
-    margin-bottom: 0.5rem;
-    display: block;
-  }
-  .feature-card h3 {
-    font-size: 1.05rem;
-    margin-bottom: 0.4rem;
-    color: var(--white);
-  }
-  .feature-card p {
-    font-size: 0.88rem;
-    color: var(--dim);
-    line-height: 1.5;
-  }
-
-  /* Commands section */
-  .commands-list {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-    gap: 1rem;
-    margin-top: 2rem;
-  }
-  .command-item {
-    background: var(--card-bg);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 1rem 1.25rem;
-    font-family: var(--font-mono);
-    font-size: 0.85rem;
-  }
-  .command-item code {
-    color: var(--cyan);
-  }
-  .command-item .desc {
-    color: var(--dim);
-    font-family: var(--font-sans);
-    font-size: 0.82rem;
-    margin-top: 0.25rem;
-  }
-
-  /* Pricing table */
-  .pricing-table {
-    width: 100%;
-    border-collapse: collapse;
-    margin-top: 1.5rem;
-    font-size: 0.88rem;
-  }
-  .pricing-table th, .pricing-table td {
-    padding: 0.6rem 1rem;
-    text-align: left;
+  .browser-bar {
+    display: flex; align-items: center; gap: 6px;
+    padding: 10px 14px; background: var(--surface-2);
     border-bottom: 1px solid var(--border);
   }
-  .pricing-table th {
-    color: var(--cyan);
-    font-weight: 600;
-    font-size: 0.8rem;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
+  .browser-url {
+    flex: 1; text-align: center; font-size: 0.72rem;
+    color: var(--text-muted); font-family: var(--font-mono);
   }
-  .pricing-table td { color: var(--dim); }
-  .pricing-table td:first-child { color: var(--white); font-weight: 500; }
+  .dash { padding: 1.25rem; }
 
-  /* CTA */
-  .cta {
-    text-align: center;
-    padding: 4rem 1.5rem;
+  .kpi-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 0.75rem; margin-bottom: 1.25rem;
   }
-  .cta h2 { margin-bottom: 1rem; }
-  .cta-buttons {
-    display: flex;
-    gap: 1rem;
-    justify-content: center;
-    flex-wrap: wrap;
-    margin-top: 1.5rem;
-  }
-  .btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 0.75rem 1.75rem;
-    border-radius: 8px;
-    font-size: 0.95rem;
-    font-weight: 600;
-    transition: transform 0.2s, box-shadow 0.2s;
-    text-decoration: none;
-  }
-  .btn:hover { transform: translateY(-1px); text-decoration: none; }
-  .btn-primary {
-    background: linear-gradient(135deg, var(--green), var(--cyan));
-    color: var(--bg-dark);
-  }
-  .btn-secondary {
-    background: transparent;
+  .kpi {
+    background: var(--surface-2);
     border: 1px solid var(--border);
-    color: var(--white);
+    border-radius: 10px;
+    padding: 0.9rem 1rem;
   }
-  .btn-secondary:hover { border-color: var(--cyan); }
+  .kpi .label {
+    font-size: 0.66rem; letter-spacing: 0.1em; text-transform: uppercase;
+    color: var(--text-muted); font-family: var(--font-mono); margin-bottom: 0.35rem;
+  }
+  .kpi .value {
+    font-size: 1.5rem; font-weight: 700; letter-spacing: -0.02em;
+    color: var(--text-primary); line-height: 1.1;
+  }
+  .kpi .value.jade { color: var(--jade-lift); }
+  .kpi .value.iolite { color: var(--iolite-lift); }
+  .kpi .sub { font-size: 0.7rem; color: var(--text-muted); margin-top: 0.2rem; }
 
-  /* Footer */
+  .panel-title {
+    font-size: 0.72rem; letter-spacing: 0.1em; text-transform: uppercase;
+    color: var(--text-muted); font-family: var(--font-mono);
+    margin: 0 0 0.6rem;
+  }
+
+  .proj-row {
+    display: grid;
+    grid-template-columns: minmax(90px, 1.1fr) 2.4fr minmax(52px, auto);
+    align-items: center; gap: 0.75rem;
+    padding: 0.4rem 0;
+  }
+  .proj-name { font-size: 0.8rem; color: var(--text-primary); }
+  .proj-client {
+    display: inline-block; font-size: 0.62rem; font-family: var(--font-mono);
+    color: var(--text-muted); border: 1px solid var(--border-strong);
+    border-radius: 999px; padding: 0.05rem 0.45rem; margin-left: 0.35rem;
+  }
+  .bar-track { background: var(--surface-3); border-radius: 4px; height: 9px; overflow: hidden; }
+  .bar-fill { height: 100%; border-radius: 4px; background: var(--jade); }
+  .proj-hours {
+    font-family: var(--font-mono); font-size: 0.76rem;
+    color: var(--text-secondary); text-align: right;
+  }
+
+  .timeline {
+    display: flex; align-items: flex-end; gap: 3px;
+    height: 76px; margin-top: 0.4rem;
+    padding-top: 0.5rem; border-bottom: 1px solid var(--border);
+  }
+  .tl-day { flex: 1; display: flex; flex-direction: column; justify-content: flex-end; gap: 2px; }
+  .tl-seg { border-radius: 2px 2px 0 0; }
+  .tl-seg.a { background: var(--jade); }
+  .tl-seg.b { background: var(--iolite); }
+  .legend {
+    display: flex; gap: 1.1rem; justify-content: flex-start;
+    margin-top: 0.6rem; font-size: 0.7rem; color: var(--text-secondary);
+    font-family: var(--font-mono);
+  }
+  .legend i { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 0.35rem; }
+  .legend .a i { background: var(--jade); }
+  .legend .b i { background: var(--iolite); }
+
+  .mock-note {
+    text-align: center; color: var(--text-muted);
+    font-size: 0.78rem; margin-top: 0.75rem;
+  }
+
+  /* ---- Cards ---- */
+  .features-grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 1rem; margin-top: 2rem;
+  }
+  .feature-card {
+    background: var(--surface-1);
+    border: 1px solid var(--border);
+    border-radius: 12px; padding: 1.4rem;
+    transition: border-color 0.2s, transform 0.2s;
+  }
+  .feature-card:hover { border-color: var(--border-strong); transform: translateY(-2px); }
+  .feature-card .icon { font-size: 1.4rem; margin-bottom: 0.5rem; display: block; }
+  .feature-card h3 { font-size: 1rem; font-weight: 600; margin-bottom: 0.35rem; }
+  .feature-card p { font-size: 0.85rem; color: var(--text-secondary); line-height: 1.55; }
+
+  .commands-list {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr));
+    gap: 0.75rem; margin-top: 2rem;
+  }
+  .command-item {
+    background: var(--surface-1); border: 1px solid var(--border);
+    border-radius: 10px; padding: 0.9rem 1.1rem;
+  }
+  .command-item code {
+    font-family: var(--font-mono); font-size: 0.82rem; color: var(--jade-lift);
+  }
+  .command-item .desc {
+    color: var(--text-secondary); font-size: 0.8rem; margin-top: 0.25rem;
+  }
+  .command-item.is-new { border-color: rgba(128, 115, 255, 0.45); }
+  .command-item .tag-new {
+    float: right; font-family: var(--font-mono); font-size: 0.6rem;
+    letter-spacing: 0.08em; color: var(--iolite-lift);
+    border: 1px solid rgba(128, 115, 255, 0.4);
+    border-radius: 999px; padding: 0.05rem 0.45rem;
+  }
+
+  /* ---- Problem statement ---- */
+  .problem { max-width: 860px; margin: 0 auto; }
+  .problem-lede {
+    font-size: clamp(1rem, 2.1vw, 1.12rem);
+    color: var(--text-secondary);
+    text-align: center; max-width: 680px; margin: 0 auto 2.5rem;
+  }
+  .problem-lede strong { color: var(--text-primary); font-weight: 600; }
+
+  .compare {
+    display: grid; grid-template-columns: 1fr auto 1fr;
+    gap: 1rem; align-items: stretch;
+  }
+  .compare-card {
+    background: var(--surface-1);
+    border: 1px solid var(--border);
+    border-radius: 12px; padding: 1.4rem;
+  }
+  .compare-card .who {
+    font-family: var(--font-mono); font-size: 0.68rem;
+    letter-spacing: 0.12em; text-transform: uppercase;
+    color: var(--text-muted); margin-bottom: 0.7rem;
+  }
+  .compare-card .amount {
+    font-size: 1.9rem; font-weight: 700; letter-spacing: -0.03em;
+    line-height: 1.1; margin-bottom: 0.35rem;
+  }
+  .compare-card .amount.flat { color: var(--text-primary); }
+  .compare-card .amount.est { color: var(--jade-lift); }
+  .compare-card .note { font-size: 0.82rem; color: var(--text-secondary); line-height: 1.55; }
+  .compare-card.unknown { border-style: dashed; border-color: var(--border-strong); }
+  .compare-card.unknown .amount { color: var(--text-muted); }
+
+  .compare-vs {
+    display: flex; align-items: center; justify-content: center;
+    font-family: var(--font-mono); font-size: 0.7rem;
+    letter-spacing: 0.12em; color: var(--text-muted);
+  }
+
+  .verdict {
+    margin-top: 1rem; text-align: center;
+    background: var(--surface-1);
+    border: 1px solid var(--border-strong);
+    border-radius: 12px; padding: 1.1rem 1.35rem;
+  }
+  .verdict .big {
+    font-size: 1.5rem; font-weight: 700; letter-spacing: -0.02em;
+    color: var(--iolite-lift); display: block; margin-bottom: 0.2rem;
+  }
+  .verdict .small { font-size: 0.83rem; color: var(--text-secondary); }
+
+  @media (max-width: 700px) {
+    .compare { grid-template-columns: 1fr; }
+    .compare-vs { padding: 0.2rem 0; }
+  }
+
+  /* ---- Callout ---- */
+  .callout {
+    max-width: 760px; margin: 2rem auto 0;
+    background: var(--surface-1);
+    border: 1px solid var(--border-strong);
+    border-left: 3px solid var(--amber);
+    border-radius: 10px; padding: 1.1rem 1.35rem;
+  }
+  .callout h3 {
+    font-size: 0.95rem; font-weight: 600; margin-bottom: 0.4rem; color: var(--text-primary);
+  }
+  .callout p { font-size: 0.85rem; color: var(--text-secondary); line-height: 1.6; }
+  .callout code {
+    font-family: var(--font-mono); font-size: 0.8rem;
+    color: var(--jade-lift); background: var(--surface-2);
+    padding: 0.1rem 0.35rem; border-radius: 4px;
+  }
+
+  /* ---- Pricing ---- */
+  .pricing-table { width: 100%; border-collapse: collapse; margin-top: 1.5rem; font-size: 0.84rem; }
+  .pricing-table th, .pricing-table td {
+    padding: 0.55rem 0.9rem; text-align: left; border-bottom: 1px solid var(--border);
+  }
+  .pricing-table th {
+    color: var(--text-muted); font-weight: 500; font-size: 0.68rem;
+    text-transform: uppercase; letter-spacing: 0.09em; font-family: var(--font-mono);
+  }
+  .pricing-table td { color: var(--text-secondary); font-family: var(--font-mono); }
+  .pricing-table td:first-child {
+    color: var(--text-primary); font-weight: 500; font-family: var(--font-display);
+  }
+
+  /* ---- CTA / footer ---- */
+  .cta { text-align: center; padding: 4rem 1.5rem 3rem; }
+  .cta-buttons { display: flex; gap: 0.85rem; justify-content: center; flex-wrap: wrap; margin-top: 1.5rem; }
+  .btn {
+    display: inline-flex; align-items: center; gap: 0.6rem;
+    padding: 0.8rem 1.7rem; border-radius: 11px;
+    font-size: 0.94rem; font-weight: 600; letter-spacing: -0.01em;
+    border: 1px solid transparent;
+    text-decoration: none;
+    transition: transform 0.2s ease, border-color 0.2s ease,
+                box-shadow 0.2s ease, background 0.2s ease;
+  }
+  .btn:hover { transform: translateY(-2px); text-decoration: none; }
+  .btn:active { transform: translateY(0); }
+  .btn svg { width: 19px; height: 19px; flex-shrink: 0; }
+  /* The marks are monochrome and inherit the label colour, so the pair stays
+     visually matched instead of one button shouting in brand red. */
+  .btn svg path { fill: currentColor; }
+
+  .btn-primary {
+    background: linear-gradient(120deg, var(--jade), var(--jade-lift));
+    color: #04120e;
+    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.18) inset,
+                0 6px 20px -8px rgba(15, 170, 136, 0.75);
+  }
+  .btn-primary:hover {
+    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.22) inset,
+                0 10px 26px -8px rgba(47, 224, 176, 0.85);
+  }
+
+  .btn-secondary {
+    background: var(--surface-1);
+    border-color: var(--border-strong);
+    color: var(--text-primary);
+  }
+  .btn-secondary:hover {
+    border-color: var(--iolite);
+    background: var(--surface-2);
+    box-shadow: 0 8px 24px -10px rgba(128, 115, 255, 0.6);
+  }
+  .btn-secondary:hover svg path { fill: var(--iolite-lift); }
+
   footer {
-    text-align: center;
-    padding: 2rem 1.5rem;
+    text-align: center; padding: 2rem 1.5rem;
     border-top: 1px solid var(--border);
-    color: var(--dim);
-    font-size: 0.82rem;
+    color: var(--text-muted); font-size: 0.8rem;
   }
-  footer a { color: var(--cyan); }
-  .footer-links {
-    display: flex;
-    gap: 1.5rem;
-    justify-content: center;
-    margin-bottom: 0.75rem;
-  }
+  .footer-links { display: flex; gap: 1.4rem; justify-content: center; margin-bottom: 0.75rem; flex-wrap: wrap; }
 
-  /* Responsive */
   @media (max-width: 640px) {
-    .hero h1 { font-size: 2.2rem; }
-    .hero .tagline { font-size: 1.05rem; }
-    .install-box { font-size: 0.85rem; padding: 0.6rem 1rem; }
-    .terminal pre { font-size: 0.7rem; padding: 1rem; }
-    .section h2 { font-size: 1.5rem; }
+    .hero { padding: 4rem 1.25rem 2.5rem; }
+    .install-box { font-size: 0.8rem; padding: 0.6rem 1rem; gap: 0.6rem; }
+    .terminal pre { font-size: 0.66rem; padding: 1rem; }
+    .proj-row { grid-template-columns: minmax(70px, 1fr) 1.6fr auto; gap: 0.5rem; }
+    .kpi .value { font-size: 1.25rem; }
   }
 </style>
 </head>
@@ -306,11 +438,15 @@
 <!-- Hero -->
 <section class="hero">
   <h1>Claude Meter</h1>
-  <p class="tagline">Know exactly what your Claude Code usage costs. Track tokens, estimate costs, and monitor usage — all from your terminal.</p>
+  <p class="tagline">
+    Know what your Claude Code usage costs — and <strong>how many hours you actually worked</strong>.
+    Tokens, costs, and per-project work hours, from your terminal or a local dashboard.
+  </p>
   <div class="badges">
     <span>Windows</span>
     <span>macOS</span>
     <span>Linux</span>
+    <span>Docker</span>
     <span>Node &ge; 18</span>
     <span>MIT License</span>
   </div>
@@ -321,9 +457,157 @@
   </div>
 </section>
 
+<!-- Problem statement -->
+<section class="section">
+  <span class="eyebrow">Why this exists</span>
+  <h2>On The API You Get A Bill.<br><span class="accent">On A Subscription You Get Nothing.</span></h2>
+  <p class="problem-lede">
+    Pay per token and your usage is itemised down to the cent. Pay a flat monthly fee for
+    <strong>Pro or Max</strong> and that visibility disappears &mdash; you have no idea whether you used
+    fifty dollars of compute this month or five thousand. Claude Meter prices the usage that is
+    already sitting in your local logs at published API rates, so you can finally see it.
+  </p>
+
+  <div class="problem">
+    <div class="compare">
+      <div class="compare-card">
+        <div class="who">What you paid</div>
+        <div class="amount flat">Flat fee</div>
+        <p class="note">Your subscription price. Same every month, whatever you did with it.</p>
+      </div>
+      <div class="compare-vs">VS</div>
+      <div class="compare-card">
+        <div class="who">What you actually used</div>
+        <div class="amount est">$8,531.68</div>
+        <p class="note">
+          The same month&rsquo;s real token usage, priced at API rates from your own logs.
+        </p>
+      </div>
+    </div>
+
+    <div class="verdict">
+      <span class="big">Now you can answer it.</span>
+      <span class="small">
+        Is the subscription worth it? What would this month have cost on the API?
+        Which project is burning the most? Am I trending up week over week?
+      </span>
+    </div>
+
+    <div class="callout" style="margin-top: 1.5rem; border-left-color: var(--iolite);">
+      <h3>To be clear: this is not your bill</h3>
+      <p>
+        Anthropic does not publish per-token consumption for subscription plans, so nothing here can
+        be reconciled against an invoice. Claude Meter reports <strong>what your usage would have cost
+        at published API rates</strong> &mdash; a like-for-like yardstick for the value you are getting,
+        not a statement of what you owe. On a subscription you owe the flat fee either way.
+      </p>
+    </div>
+  </div>
+</section>
+
+<!-- Work hours dashboard -->
+<section class="section">
+  <span class="eyebrow">New in 0.3</span>
+  <h2>Your Work Hours, <span class="accent">Derived From Your Logs</span></h2>
+  <p class="lede">
+    Claude Meter reads the timestamps already in your session transcripts and reconstructs when you were
+    actually working. No timers to start, nothing to remember, no clocking in. Run
+    <code style="font-family: var(--font-mono); color: var(--jade-lift);">claude-meter serve</code>
+    and open it in your browser.
+  </p>
+
+  <div class="browser">
+    <div class="browser-bar">
+      <span class="terminal-dot red"></span>
+      <span class="terminal-dot yellow"></span>
+      <span class="terminal-dot green"></span>
+      <span class="browser-url">127.0.0.1:4317 &mdash; Claude Meter</span>
+    </div>
+    <div class="dash">
+      <div class="kpi-row">
+        <div class="kpi">
+          <div class="label">Summed</div>
+          <div class="value jade">211.3h</div>
+          <div class="sub">across sessions</div>
+        </div>
+        <div class="kpi">
+          <div class="label">Wall-clock</div>
+          <div class="value iolite">168.4h</div>
+          <div class="sub">overlap merged</div>
+        </div>
+        <div class="kpi">
+          <div class="label">Projects</div>
+          <div class="value">24</div>
+          <div class="sub">8 clients</div>
+        </div>
+        <div class="kpi">
+          <div class="label">Active days</div>
+          <div class="value">33</div>
+          <div class="sub">6.4h avg</div>
+        </div>
+      </div>
+
+      <p class="panel-title">Hours by project</p>
+      <div class="proj-row">
+        <div class="proj-name">gateway<span class="proj-client">Acme</span></div>
+        <div class="bar-track"><div class="bar-fill" style="width: 100%;"></div></div>
+        <div class="proj-hours">48.2h</div>
+      </div>
+      <div class="proj-row">
+        <div class="proj-name">tenant-web<span class="proj-client">Acme</span></div>
+        <div class="bar-track"><div class="bar-fill" style="width: 76%;"></div></div>
+        <div class="proj-hours">36.7h</div>
+      </div>
+      <div class="proj-row">
+        <div class="proj-name">ticket-svc<span class="proj-client">Northwind</span></div>
+        <div class="bar-track"><div class="bar-fill" style="width: 55%;"></div></div>
+        <div class="proj-hours">26.5h</div>
+      </div>
+      <div class="proj-row">
+        <div class="proj-name">mobile-app<span class="proj-client">Initech</span></div>
+        <div class="bar-track"><div class="bar-fill" style="width: 38%;"></div></div>
+        <div class="proj-hours">18.3h</div>
+      </div>
+      <div class="proj-row">
+        <div class="proj-name">infra<span class="proj-client">internal</span></div>
+        <div class="bar-track"><div class="bar-fill" style="width: 21%;"></div></div>
+        <div class="proj-hours">10.1h</div>
+      </div>
+
+      <p class="panel-title" style="margin-top: 1.25rem;">Daily timeline</p>
+      <div class="timeline">
+        <div class="tl-day"><div class="tl-seg b" style="height: 12px;"></div><div class="tl-seg a" style="height: 26px;"></div></div>
+        <div class="tl-day"><div class="tl-seg b" style="height: 18px;"></div><div class="tl-seg a" style="height: 34px;"></div></div>
+        <div class="tl-day"><div class="tl-seg b" style="height: 8px;"></div><div class="tl-seg a" style="height: 14px;"></div></div>
+        <div class="tl-day"><div class="tl-seg b" style="height: 22px;"></div><div class="tl-seg a" style="height: 41px;"></div></div>
+        <div class="tl-day"><div class="tl-seg b" style="height: 15px;"></div><div class="tl-seg a" style="height: 30px;"></div></div>
+        <div class="tl-day"><div class="tl-seg a" style="height: 9px;"></div></div>
+        <div class="tl-day"><div class="tl-seg b" style="height: 6px;"></div><div class="tl-seg a" style="height: 11px;"></div></div>
+        <div class="tl-day"><div class="tl-seg b" style="height: 25px;"></div><div class="tl-seg a" style="height: 44px;"></div></div>
+        <div class="tl-day"><div class="tl-seg b" style="height: 20px;"></div><div class="tl-seg a" style="height: 37px;"></div></div>
+        <div class="tl-day"><div class="tl-seg b" style="height: 28px;"></div><div class="tl-seg a" style="height: 30px;"></div></div>
+        <div class="tl-day"><div class="tl-seg b" style="height: 13px;"></div><div class="tl-seg a" style="height: 24px;"></div></div>
+        <div class="tl-day"><div class="tl-seg b" style="height: 17px;"></div><div class="tl-seg a" style="height: 39px;"></div></div>
+        <div class="tl-day"><div class="tl-seg a" style="height: 7px;"></div></div>
+        <div class="tl-day"><div class="tl-seg b" style="height: 10px;"></div><div class="tl-seg a" style="height: 21px;"></div></div>
+        <div class="tl-day"><div class="tl-seg b" style="height: 24px;"></div><div class="tl-seg a" style="height: 46px;"></div></div>
+        <div class="tl-day"><div class="tl-seg b" style="height: 19px;"></div><div class="tl-seg a" style="height: 33px;"></div></div>
+        <div class="tl-day"><div class="tl-seg b" style="height: 14px;"></div><div class="tl-seg a" style="height: 28px;"></div></div>
+      </div>
+      <div class="legend">
+        <span class="a"><i></i>Active time</span>
+        <span class="b"><i></i>Second project</span>
+      </div>
+    </div>
+  </div>
+  <p class="mock-note">Illustrative layout. Filter by client, project, or date range &mdash; wall-clock recalculates exactly for whatever is on screen.</p>
+</section>
+
 <!-- Terminal Demo -->
 <section class="section">
-  <h2>See It <span class="accent">In Action</span></h2>
+  <h2>Still A <span class="accent">Terminal Tool</span></h2>
+  <p class="lede">The dashboard is optional. Everything works from the CLI.</p>
+
   <div class="terminal">
     <div class="terminal-bar">
       <span class="terminal-dot red"></span>
@@ -333,74 +617,86 @@
     </div>
     <pre><span class="cmd">$</span> <span class="white">claude-meter today --compact</span>
 
-<span class="white">Claude Meter</span> <span class="dim">— Today (Mar 22, 2026)</span>
+<span class="white">Claude Meter</span> <span class="dim">— Today</span>
 
   <span class="dim">Entries:</span> <span class="white">3,241</span> <span class="dim">|</span> <span class="dim">Sessions:</span> <span class="white">28</span>
 
   <span class="dim">Tokens:</span>   <span class="white">Input 245.3K</span> <span class="dim">|</span> <span class="white">Output 892.1K</span> <span class="dim">|</span> <span class="white">Fresh 1.1M</span>
   <span class="dim">Cache:</span>    <span class="white">Read 312.5M</span> <span class="dim">|</span> <span class="white">5m 8.2M</span> <span class="dim">|</span> <span class="white">1h 14.7M</span> <span class="dim">|</span> <span class="white">Full 335.4M</span>
 
-  <span class="dim">Models:</span>   <span class="white">opus-4-6 94%</span> <span class="dim">|</span> <span class="white">haiku-4-5 6%</span>
+  <span class="dim">Models:</span>   <span class="white">opus-5 92%</span> <span class="dim">|</span> <span class="white">sonnet-5 8%</span>
 
-  <span class="yellow">Cost:     $142.38</span> <span class="dim">(opus $134.10 | haiku $8.28)</span>
+  <span class="amber">Cost:     $142.38</span> <span class="dim">(opus $136.55 | sonnet $5.83)</span>
 
   <span class="dim">Pricing:  bundled defaults</span></pre>
   </div>
 
-  <div class="terminal" style="margin-top: 1.5rem;">
+  <div class="terminal">
     <div class="terminal-bar">
       <span class="terminal-dot red"></span>
       <span class="terminal-dot yellow"></span>
       <span class="terminal-dot green"></span>
-      <span class="terminal-title">claude-meter this-month</span>
+      <span class="terminal-title">claude-meter retention</span>
     </div>
-    <pre><span class="cmd">$</span> <span class="white">claude-meter this-month</span>
+    <pre><span class="cmd">$</span> <span class="white">claude-meter retention</span>
 
-<span class="white">&#9556;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9559;
-&#9553;               Claude Meter &#8212; March 2026                &#9553;
-&#9562;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9565;</span>
+<span class="white">Log retention</span>
 
-  <span class="dim">Period:</span>          <span class="white">Mar 1 &#8211; Mar 22, 2026</span>
-  <span class="dim">Files Scanned:</span>   <span class="white">2,568</span>
-  <span class="dim">Entries:</span>         <span class="white">106,461</span>
+  <span class="dim">cleanupPeriodDays</span>   <span class="amber">30 days (Claude Code default)</span>
+  <span class="dim">Oldest log</span>          <span class="white">29.9 days</span>
+  <span class="dim">Session files</span>       <span class="white">2,568</span>
 
-<span class="dim">&#9484;&#9472; Token Usage &#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9488;</span>
-<span class="dim">&#9474;</span>  <span class="dim">Input Tokens:</span>          <span class="white">5.9M</span>                       <span class="dim">&#9474;</span>
-<span class="dim">&#9474;</span>  <span class="dim">Output Tokens:</span>         <span class="white">11.6M</span>                      <span class="dim">&#9474;</span>
-<span class="dim">&#9474;</span>  <span class="dim">Cache Read:</span>            <span class="white">8.3B</span>                       <span class="dim">&#9474;</span>
-<span class="dim">&#9474;</span>  <span class="dim">Full Total:</span>            <span class="white">8.8B</span>                       <span class="dim">&#9474;</span>
-<span class="dim">&#9492;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9496;</span>
+  <span class="amber">! 92 projects have already lost their logs</span>
 
-<span class="dim">&#9484;&#9472; Estimated Cost &#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9488;</span>
-<span class="dim">&#9474;</span>  <span class="yellow">Total:              $8,531.68</span>                    <span class="dim">&#9474;</span>
-<span class="dim">&#9474;</span>    <span class="dim">opus-4-6:</span>         <span class="white">$7,882.23</span>                    <span class="dim">&#9474;</span>
-<span class="dim">&#9474;</span>    <span class="dim">haiku-4-5:</span>        <span class="white">$649.45</span>                      <span class="dim">&#9474;</span>
-<span class="dim">&#9492;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9496;</span></pre>
+  <span class="dim">Claude Code deletes session transcripts older than 30 days at
+  startup. Those hours and costs are gone — Claude Meter reads
+  those files, so it cannot report on what is no longer there.</span>
+
+  <span class="dim">Disk.</span>     <span class="white">~11.4 MB/day measured → ~40.6 GB at 3650 days</span>
+  <span class="dim">Privacy.</span>  <span class="white">Transcripts are plaintext and stay on disk longer</span>
+
+  <span class="dim">Nothing already deleted comes back.</span>
+
+  <span class="white">Set cleanupPeriodDays to 3650?</span> <span class="dim">(y/N)</span></pre>
+  </div>
+</section>
+
+<!-- Retention callout -->
+<section class="section" style="padding-top: 0;">
+  <div class="callout">
+    <h3>Read this before you trust a long report</h3>
+    <p>
+      Claude Code deletes session logs older than <strong>30 days</strong> by default, so
+      &ldquo;all time&rdquo; really means &ldquo;as far back as your logs survive.&rdquo; Claude Meter
+      derives everything from those files &mdash; it cannot recover what has been pruned.
+      Run <code>claude-meter retention</code> to see what you have already lost and to extend the window
+      before it costs you more.
+    </p>
   </div>
 </section>
 
 <!-- Real Screenshots -->
 <section class="section">
   <h2>Real <span class="accent">Screenshots</span></h2>
-  <p style="text-align: center; color: var(--dim); margin-bottom: 2rem;">Actual output from a real Claude Code session.</p>
-  <div style="max-width: 720px; margin: 0 auto;">
-    <h3 style="font-size: 1rem; color: var(--cyan); margin-bottom: 0.75rem;">Monthly Usage Report</h3>
-    <img src="cob-claude-meter-this-month.png" alt="Claude Meter monthly usage report" style="width: 100%; border-radius: 10px; border: 1px solid var(--border); margin-bottom: 2rem;">
-    <h3 style="font-size: 1rem; color: var(--cyan); margin-bottom: 0.75rem;">Claude Code Statusline</h3>
-    <img src="cob-claude-statusline.png" alt="Claude Meter statusline in Claude Code" style="width: 100%; border-radius: 10px; border: 1px solid var(--border); margin-bottom: 2rem;">
-    <h3 style="font-size: 1rem; color: var(--cyan); margin-bottom: 0.75rem;">Statusline with Rate Limit Bars</h3>
-    <div class="terminal">
+  <p class="lede">Actual output from a real Claude Code session.</p>
+  <div style="max-width: 760px; margin: 0 auto;">
+    <h3 style="font-size: 0.95rem; color: var(--jade-lift); margin-bottom: 0.75rem;">Monthly Usage Report</h3>
+    <img src="cob-claude-meter-this-month.png" alt="Claude Meter monthly usage report in a terminal" style="width: 100%; border-radius: 10px; border: 1px solid var(--border); margin-bottom: 2rem;">
+    <h3 style="font-size: 0.95rem; color: var(--jade-lift); margin-bottom: 0.75rem;">Claude Code Statusline</h3>
+    <img src="cob-claude-statusline.png" alt="Claude Meter statusline inside Claude Code" style="width: 100%; border-radius: 10px; border: 1px solid var(--border); margin-bottom: 2rem;">
+    <h3 style="font-size: 0.95rem; color: var(--jade-lift); margin-bottom: 0.75rem;">Statusline with Rate Limit Bars</h3>
+    <div class="terminal" style="margin-top: 0;">
       <div class="terminal-bar">
         <span class="terminal-dot red"></span>
         <span class="terminal-dot yellow"></span>
         <span class="terminal-dot green"></span>
         <span class="terminal-title">statusline — replace mode</span>
       </div>
-      <pre><span class="white">Sonnet 4.6</span> <span class="cmd">[======              ]</span> <span class="yellow">31%</span> <span class="white">62k/200k</span> <span class="dim">git:main</span> <span class="dim">|</span> <span class="cmd">my-project</span>
-<span class="dim">Today:</span> <span class="cmd">1.2M</span> <span class="dim">~</span>$85.20 <span class="dim">|</span> <span class="dim">Month:</span> <span class="cmd">47.5M</span> <span class="dim">~</span><span class="yellow">$1.2K</span>
-<span class="dim">Usage</span> <span style="color:#4ade80">██░░░░░░</span> 5% <span class="dim">(</span>4h 35m / 5h<span class="dim">)</span> <span class="dim">|</span> <span style="color:#4ade80">█░░░░░░░</span> 3% <span class="dim">(</span>1d 23h / 7d<span class="dim">)</span></pre>
+      <pre><span class="white">Sonnet 4.6</span> <span class="cmd">[======              ]</span> <span class="amber">31%</span> <span class="white">62k/200k</span> <span class="dim">git:main</span> <span class="dim">|</span> <span class="cmd">my-project</span>
+<span class="dim">Today:</span> <span class="cmd">1.2M</span> <span class="dim">~</span>$85.20 <span class="dim">|</span> <span class="dim">Month:</span> <span class="cmd">47.5M</span> <span class="dim">~</span><span class="amber">$1.2K</span>
+<span class="dim">Usage</span> <span style="color:#0faa88">██░░░░░░</span> 5% <span class="dim">(</span>4h 35m / 5h<span class="dim">)</span> <span class="dim">|</span> <span style="color:#0faa88">█░░░░░░░</span> 3% <span class="dim">(</span>1d 23h / 7d<span class="dim">)</span></pre>
     </div>
-    <p style="text-align: center; color: var(--dim); margin-top: 0.75rem; font-size: 0.85rem;">Rate limit bars show your 5-hour and 7-day usage windows with time remaining. Auto-hidden for API users.</p>
+    <p class="mock-note">Rate limit bars show your 5-hour and 7-day windows with time remaining. Auto-hidden for API users.</p>
   </div>
 </section>
 
@@ -410,13 +706,33 @@
   <div class="features-grid">
     <div class="feature-card">
       <span class="icon">&#9201;</span>
-      <h3>Token Tracking</h3>
-      <p>Input, output, cache read, and cache creation tokens with 5-minute and 1-hour granularity.</p>
+      <h3>Work-Hours Tracking</h3>
+      <p>Active time derived from log timestamps, with an idle cutoff so breaks are not billed as work.</p>
+    </div>
+    <div class="feature-card">
+      <span class="icon">&#128202;</span>
+      <h3>Web Dashboard</h3>
+      <p><code style="font-family: var(--font-mono); font-size: 0.8rem; color: var(--jade-lift);">claude-meter serve</code> — hours per project and per day, with search, sort and date filters.</p>
+    </div>
+    <div class="feature-card">
+      <span class="icon">&#127991;</span>
+      <h3>Client Tagging</h3>
+      <p>Tag each project with a client name and group your hours the way you actually invoice.</p>
+    </div>
+    <div class="feature-card">
+      <span class="icon">&#8721;</span>
+      <h3>Summed &amp; Wall-Clock</h3>
+      <p>Summed adds every session; wall-clock merges overlaps so parallel work is never double-counted.</p>
     </div>
     <div class="feature-card">
       <span class="icon">&#128200;</span>
       <h3>Per-Model Breakdown</h3>
-      <p>See exactly how usage splits across Opus, Sonnet, and Haiku models.</p>
+      <p>See exactly how usage splits across Opus, Sonnet, and Haiku.</p>
+    </div>
+    <div class="feature-card">
+      <span class="icon">&#128276;</span>
+      <h3>Tells You When It&rsquo;s Stale</h3>
+      <p>New models ship faster than releases. If yours can&rsquo;t be priced, you get told &mdash; not a confident wrong number.</p>
     </div>
     <div class="feature-card">
       <span class="icon">&#128176;</span>
@@ -429,24 +745,24 @@
       <p>Today, this week, this month, custom date ranges, or all time.</p>
     </div>
     <div class="feature-card">
+      <span class="icon">&#128230;</span>
+      <h3>Runs In Docker</h3>
+      <p>One <code style="font-family: var(--font-mono); font-size: 0.8rem; color: var(--jade-lift);">docker compose up</code>. Logs mount read-only; your tags live on the host.</p>
+    </div>
+    <div class="feature-card">
       <span class="icon">&#9889;</span>
       <h3>Live Watch Mode</h3>
-      <p>Real-time dashboard that auto-refreshes as you work.</p>
+      <p>Real-time terminal dashboard that auto-refreshes as you work.</p>
     </div>
     <div class="feature-card">
       <span class="icon">&#128187;</span>
       <h3>Statusline Integration</h3>
-      <p>See costs and rate limit usage right inside your Claude Code terminal session.</p>
+      <p>Costs and rate-limit usage right inside your Claude Code session.</p>
     </div>
     <div class="feature-card">
       <span class="icon">&#128274;</span>
       <h3>100% Private</h3>
       <p>Everything stays local. No network calls, no telemetry, no analytics.</p>
-    </div>
-    <div class="feature-card">
-      <span class="icon">&#127760;</span>
-      <h3>Cross-Platform</h3>
-      <p>Works on Windows, macOS, and Linux with zero configuration needed.</p>
     </div>
     <div class="feature-card">
       <span class="icon">&#128218;</span>
@@ -460,6 +776,21 @@
 <section class="section">
   <h2>Commands</h2>
   <div class="commands-list">
+    <div class="command-item is-new">
+      <span class="tag-new">NEW</span>
+      <code>claude-meter serve</code>
+      <div class="desc">Start the work-hours web dashboard</div>
+    </div>
+    <div class="command-item is-new">
+      <span class="tag-new">NEW</span>
+      <code>claude-meter retention</code>
+      <div class="desc">Check and extend how long logs survive</div>
+    </div>
+    <div class="command-item is-new">
+      <span class="tag-new">NEW</span>
+      <code>claude-meter pricing --scan</code>
+      <div class="desc">Flag any model your copy cannot price</div>
+    </div>
     <div class="command-item">
       <code>claude-meter today</code>
       <div class="desc">Today's usage and costs</div>
@@ -470,7 +801,11 @@
     </div>
     <div class="command-item">
       <code>claude-meter watch</code>
-      <div class="desc">Live auto-refreshing dashboard</div>
+      <div class="desc">Live auto-refreshing terminal dashboard</div>
+    </div>
+    <div class="command-item">
+      <code>claude-meter range &lt;start&gt; &lt;end&gt;</code>
+      <div class="desc">Custom date range analysis</div>
     </div>
     <div class="command-item">
       <code>claude-meter today --json</code>
@@ -478,15 +813,11 @@
     </div>
     <div class="command-item">
       <code>claude-meter doctor</code>
-      <div class="desc">Full diagnostics health check</div>
+      <div class="desc">Diagnostics, including log retention</div>
     </div>
     <div class="command-item">
       <code>claude-meter install-statusline</code>
       <div class="desc">Add cost display to your terminal</div>
-    </div>
-    <div class="command-item">
-      <code>claude-meter range &lt;start&gt; &lt;end&gt;</code>
-      <div class="desc">Custom date range analysis</div>
     </div>
     <div class="command-item">
       <code>claude-meter config</code>
@@ -498,7 +829,11 @@
 <!-- Pricing -->
 <section class="section">
   <h2>Bundled <span class="accent">Pricing</span></h2>
-  <p style="text-align: center; color: var(--dim); margin-bottom: 0.5rem;">Official Anthropic pricing (March 2026). Updated with each release.</p>
+  <p class="lede">
+    Official Anthropic pricing, bundled as of <strong>2026-07-30</strong> and updated with each release.
+    Rates are USD per million tokens. <code style="font-family: var(--font-mono); color: var(--jade-lift);">claude-meter pricing --scan</code>
+    tells you if your installed copy has fallen behind the models you are actually running.
+  </p>
   <div style="overflow-x: auto;">
     <table class="pricing-table">
       <thead>
@@ -512,11 +847,22 @@
         </tr>
       </thead>
       <tbody>
-        <tr><td>Opus 4.6</td><td>$5/M</td><td>$25/M</td><td>$6.25/M</td><td>$10/M</td><td>$0.50/M</td></tr>
-        <tr><td>Opus 4.5</td><td>$5/M</td><td>$25/M</td><td>$6.25/M</td><td>$10/M</td><td>$0.50/M</td></tr>
-        <tr><td>Sonnet 4.6</td><td>$3/M</td><td>$15/M</td><td>$3.75/M</td><td>$6/M</td><td>$0.30/M</td></tr>
-        <tr><td>Sonnet 4.5</td><td>$3/M</td><td>$15/M</td><td>$3.75/M</td><td>$6/M</td><td>$0.30/M</td></tr>
-        <tr><td>Haiku 4.5</td><td>$1/M</td><td>$5/M</td><td>$1.25/M</td><td>$2/M</td><td>$0.10/M</td></tr>
+        <tr><td>Fable 5</td><td>$10</td><td>$50</td><td>$12.50</td><td>$20</td><td>$1</td></tr>
+        <tr><td>Mythos 5</td><td>$10</td><td>$50</td><td>$12.50</td><td>$20</td><td>$1</td></tr>
+        <tr><td>Opus 5</td><td>$5</td><td>$25</td><td>$6.25</td><td>$10</td><td>$0.50</td></tr>
+        <tr><td>Opus 4.8</td><td>$5</td><td>$25</td><td>$6.25</td><td>$10</td><td>$0.50</td></tr>
+        <tr><td>Opus 4.7</td><td>$5</td><td>$25</td><td>$6.25</td><td>$10</td><td>$0.50</td></tr>
+        <tr><td>Opus 4.6</td><td>$5</td><td>$25</td><td>$6.25</td><td>$10</td><td>$0.50</td></tr>
+        <tr><td>Opus 4.5</td><td>$5</td><td>$25</td><td>$6.25</td><td>$10</td><td>$0.50</td></tr>
+        <tr><td>Opus 4.1</td><td>$15</td><td>$75</td><td>$18.75</td><td>$30</td><td>$1.50</td></tr>
+        <tr><td>Opus 4</td><td>$15</td><td>$75</td><td>$18.75</td><td>$30</td><td>$1.50</td></tr>
+        <tr><td>Sonnet 5 <span style="color: var(--text-muted); font-size: 0.78em;">(intro, to Aug 31)</span></td><td>$2</td><td>$10</td><td>$2.50</td><td>$4</td><td>$0.20</td></tr>
+        <tr><td>Sonnet 4.6</td><td>$3</td><td>$15</td><td>$3.75</td><td>$6</td><td>$0.30</td></tr>
+        <tr><td>Sonnet 4.5</td><td>$3</td><td>$15</td><td>$3.75</td><td>$6</td><td>$0.30</td></tr>
+        <tr><td>Sonnet 4</td><td>$3</td><td>$15</td><td>$3.75</td><td>$6</td><td>$0.30</td></tr>
+        <tr><td>Haiku 4.5</td><td>$1</td><td>$5</td><td>$1.25</td><td>$2</td><td>$0.10</td></tr>
+        <tr><td>Haiku 3.5</td><td>$0.80</td><td>$4</td><td>$1</td><td>$1.60</td><td>$0.08</td></tr>
+        <tr><td>Haiku 3</td><td>$0.25</td><td>$1.25</td><td>$0.30</td><td>$0.50</td><td>$0.03</td></tr>
       </tbody>
     </table>
   </div>
@@ -525,14 +871,21 @@
 <!-- CTA -->
 <section class="cta">
   <h2>Get Started</h2>
-  <div class="install-box" onclick="navigator.clipboard.writeText('npm install -g cob-claude-meter')" style="margin-bottom: 1.5rem;">
+  <p class="lede" style="margin-bottom: 1.5rem;">Install it, run it, and see where your hours went.</p>
+  <div class="install-box" onclick="navigator.clipboard.writeText('npm install -g cob-claude-meter')" style="margin-bottom: 1rem;">
     <span class="prompt">$</span>
     <span>npm install -g cob-claude-meter</span>
     <span class="copy-hint">click to copy</span>
   </div>
   <div class="cta-buttons">
-    <a href="https://github.com/callobuzz/cob-claude-meter" class="btn btn-primary">GitHub</a>
-    <a href="https://www.npmjs.com/package/cob-claude-meter" class="btn btn-secondary">npm</a>
+    <a href="https://github.com/callobuzz/cob-claude-meter" class="btn btn-primary" rel="noopener">
+      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 .5C5.37.5 0 5.87 0 12.5c0 5.3 3.44 9.8 8.21 11.39.6.11.82-.26.82-.58 0-.29-.01-1.05-.02-2.06-3.34.73-4.04-1.61-4.04-1.61-.55-1.39-1.34-1.76-1.34-1.76-1.09-.75.08-.73.08-.73 1.21.09 1.84 1.24 1.84 1.24 1.07 1.84 2.81 1.31 3.5 1 .11-.78.42-1.31.76-1.61-2.67-.3-5.47-1.33-5.47-5.93 0-1.31.47-2.38 1.24-3.22-.12-.3-.54-1.52.12-3.18 0 0 1.01-.32 3.3 1.23a11.5 11.5 0 0 1 6.01 0c2.29-1.55 3.3-1.23 3.3-1.23.66 1.66.24 2.88.12 3.18.77.84 1.24 1.91 1.24 3.22 0 4.61-2.81 5.62-5.49 5.92.43.37.82 1.1.82 2.22 0 1.6-.02 2.89-.02 3.29 0 .32.22.7.83.58A12.01 12.01 0 0 0 24 12.5C24 5.87 18.63.5 12 .5z"/></svg>
+      View on GitHub
+    </a>
+    <a href="https://www.npmjs.com/package/cob-claude-meter" class="btn btn-secondary" rel="noopener">
+      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path fill-rule="evenodd" d="M0 7.334v8h6.666v1.332H12v-1.332h12v-8H0zm6.666 6.664H5.334v-4H3.999v4H1.335V8.667h5.331v5.331zm4 0v1.336H8.001V8.667h5.334v5.332h-2.669zm12.001 0h-1.33v-4h-1.336v4h-1.335v-4h-1.33v4h-2.671V8.667h8.002v5.331z"/></svg>
+      Install from npm
+    </a>
   </div>
 </section>
 
@@ -541,6 +894,7 @@
   <div class="footer-links">
     <a href="https://github.com/callobuzz/cob-claude-meter">GitHub</a>
     <a href="https://www.npmjs.com/package/cob-claude-meter">npm</a>
+    <a href="https://github.com/callobuzz/cob-claude-meter/blob/main/README.md">Docs</a>
     <a href="https://github.com/callobuzz/cob-claude-meter/blob/main/LICENSE">MIT License</a>
   </div>
   <p>Claude Meter &mdash; by <a href="https://callobuzz.com">Call O Buzz</a></p>
