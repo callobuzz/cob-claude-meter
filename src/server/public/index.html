@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Claude Meter — Work Hours</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link
+  href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,800&family=IBM+Plex+Mono:wght@400;500;600&display=swap"
+  rel="stylesheet" />
+<link rel="stylesheet" href="/app.css" />
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <span class="brand-dial" aria-hidden="true"></span>
+    <div>
+      <h1>Claude Meter</h1>
+      <p class="brand-sub">Work hours from Claude&nbsp;Code session logs</p>
+    </div>
+  </div>
+
+  <div class="topbar-controls">
+    <label class="field">
+      <span class="field-label">Idle cutoff</span>
+      <select id="idle-select">
+        <option value="60">1 min</option>
+        <option value="120">2 min</option>
+        <option value="300" selected>5 min</option>
+        <option value="600">10 min</option>
+        <option value="1800">30 min</option>
+      </select>
+    </label>
+    <button id="refresh-btn" class="btn" type="button">
+      <span class="btn-glyph" aria-hidden="true">&#8635;</span> Rescan
+    </button>
+  </div>
+</header>
+
+<nav class="ranges" id="range-chips" aria-label="Date range">
+  <button class="chip" data-range="today">Today</button>
+  <button class="chip" data-range="yesterday">Yesterday</button>
+  <button class="chip" data-range="this-week">This week</button>
+  <button class="chip" data-range="last-week">Last week</button>
+  <button class="chip is-active" data-range="this-month">This month</button>
+  <button class="chip" data-range="last-month">Last month</button>
+  <button class="chip" data-range="last30">Last 30d</button>
+  <button class="chip" data-range="this-year">This year</button>
+  <button class="chip" data-range="all">All time</button>
+
+  <span class="ranges-custom">
+    <input type="date" id="custom-start" aria-label="Start date" />
+    <span class="dash" aria-hidden="true">&ndash;</span>
+    <input type="date" id="custom-end" aria-label="End date" />
+    <button class="btn btn-ghost" id="custom-apply" type="button">Apply</button>
+  </span>
+</nav>
+
+<section class="stats" id="stats" aria-label="Summary">
+  <article class="stat stat-hero">
+    <p class="stat-label">Total hours <span class="stat-note">summed</span></p>
+    <p class="stat-value" id="stat-total">&mdash;</p>
+    <p class="stat-foot" id="stat-range">&nbsp;</p>
+  </article>
+  <article class="stat">
+    <p class="stat-label">Wall-clock <span class="stat-note">merged</span></p>
+    <p class="stat-value stat-alt" id="stat-wall">&mdash;</p>
+    <p class="stat-foot" id="stat-concurrency">&nbsp;</p>
+  </article>
+  <article class="stat">
+    <p class="stat-label">Active days</p>
+    <p class="stat-value" id="stat-days">&mdash;</p>
+    <p class="stat-foot" id="stat-avg">&nbsp;</p>
+  </article>
+  <article class="stat">
+    <p class="stat-label">Projects</p>
+    <p class="stat-value" id="stat-projects">&mdash;</p>
+    <p class="stat-foot" id="stat-clients">&nbsp;</p>
+  </article>
+  <article class="stat">
+    <p class="stat-label">Sessions</p>
+    <p class="stat-value" id="stat-sessions">&mdash;</p>
+    <p class="stat-foot" id="stat-scan">&nbsp;</p>
+  </article>
+</section>
+
+<nav class="tabs" id="tabs" aria-label="View">
+  <button class="tab is-active" data-tab="projects">Projects</button>
+  <button class="tab" data-tab="timeline">Timeline</button>
+  <button class="tab" data-tab="clients">Clients</button>
+</nav>
+
+<section class="toolbar" id="toolbar">
+  <label class="field field-grow">
+    <span class="field-label">Search</span>
+    <input type="search" id="search" placeholder="Project name or path&hellip;" autocomplete="off" />
+  </label>
+  <label class="field">
+    <span class="field-label">Client</span>
+    <select id="filter-client"><option value="">All clients</option></select>
+  </label>
+  <label class="field">
+    <span class="field-label">Tag</span>
+    <select id="filter-tag"><option value="">All tags</option></select>
+  </label>
+  <label class="field">
+    <span class="field-label">Sort</span>
+    <select id="sort">
+      <option value="hours">Hours</option>
+      <option value="name">Name</option>
+      <option value="sessions">Sessions</option>
+      <option value="days">Active days</option>
+      <option value="recent">Last active</option>
+    </select>
+  </label>
+  <label class="field field-check">
+    <input type="checkbox" id="show-hidden" />
+    <span>Show hidden</span>
+  </label>
+  <label class="field" id="group-field" hidden>
+    <span class="field-label">Group</span>
+    <select id="group-by">
+      <option value="day">Day</option>
+      <option value="week">Week</option>
+      <option value="month">Month</option>
+    </select>
+  </label>
+</section>
+
+<main id="main">
+  <div id="panel-projects" class="panel"></div>
+  <div id="panel-timeline" class="panel" hidden></div>
+  <div id="panel-clients" class="panel" hidden></div>
+</main>
+
+<div id="loading" class="loading" hidden>
+  <span class="loading-bar"></span>
+  <span id="loading-text">Scanning session logs&hellip;</span>
+</div>
+
+<div id="toast" class="toast" hidden></div>
+<div id="tooltip" class="tooltip" hidden></div>
+
+<footer class="footer">
+  <span id="footer-meta">&nbsp;</span>
+</footer>
+
+<script src="/app.js" type="module"></script>
+</body>
+</html>

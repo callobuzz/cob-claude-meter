@@ -34,6 +34,9 @@ claude-meter today
 
 # Enable statusline in Claude Code
 claude-meter install-statusline
+
+# Work-hours dashboard in the browser
+claude-meter serve
 ```
 
 ---
@@ -57,6 +60,9 @@ Claude Meter reads your local Claude Code logs and gives you **instant answers**
 | **Per-Model Breakdown** | See usage split across Opus, Sonnet, Haiku |
 | **Exact Cost Estimates** | Uses real cache breakdowns — no guessing |
 | **Time Ranges** | Today, this week, this month, custom ranges |
+| **Work-Hours Tracking** | Active time per project and per day, idle time excluded |
+| **Web Dashboard** | Filterable, searchable UI — run it in Docker, open a URL |
+| **Client Tagging** | Tag projects with a client, then filter and roll up by client |
 | **Live Watch Mode** | Real-time dashboard with auto-refresh |
 | **Claude Code Statusline** | See costs right in your terminal |
 | **Rate Limit Bars** | 5-hour and 7-day usage with time remaining |
@@ -113,13 +119,101 @@ claude-meter install-statusline    # Install into Claude Code
 claude-meter uninstall-statusline  # Remove from Claude Code
 ```
 
-### Live Monitor
+### Live Monitor (terminal)
 
 ```bash
 claude-meter watch                 # Live dashboard (30s refresh)
 claude-meter watch --interval 10   # Custom refresh interval
 claude-meter watch --compact       # Minimal live view
 ```
+
+### Work-Hours Dashboard
+
+```bash
+claude-meter serve                 # http://127.0.0.1:4317
+claude-meter serve --port 8080     # Custom port
+claude-meter serve --host 0.0.0.0  # Bind all interfaces (containers)
+```
+
+---
+
+## Work-Hours Tracking
+
+Alongside tokens, Claude Meter measures **how long you actually worked**, derived
+from timestamps already present in your session logs. Nothing new is recorded and
+no daemon runs — it works retroactively across your entire log history.
+
+### How active time is measured
+
+Every log entry carries a timestamp. Active time is the sum of gaps between
+consecutive entries, **discarding any gap longer than the idle cutoff** (5 minutes
+by default). An idle terminal writes nothing, so it excludes itself. A four-minute
+build sits under the cutoff and counts as work, which is the intent — time the
+pipeline is live is time spent.
+
+Two totals are reported, and they answer different questions:
+
+| Metric | Meaning | Use it for |
+|---|---|---|
+| **Summed** | Each session counted separately. Two terminals for an hour each = 2 h. | Per-project effort, billing |
+| **Wall-clock** | All sessions merged onto one timeline. The same hour counts once. | "How long was I at the desk?" |
+
+If you run several terminals at once the two diverge permanently — that gap is
+real concurrency, not an error. Summed is the headline number; wall-clock sits
+beside it so a 23-hour day is recognisable as double counting rather than a record.
+
+### Project identity
+
+A project is a **log directory**, not a `cwd`. `cwd` follows your shell, so one
+session reports many values as you move between subfolders — and occasionally a
+stale path that no longer exists. The display name is the shallowest path the
+majority of entries sit beneath, so subdirectory excursions and outliers do not
+split one project into several. Directories that resolve to the same path (after
+a folder rename) merge back together.
+
+Subagent transcripts under `<session-id>/subagents/` are deliberately ignored — a
+subagent runs *inside* its parent session, so counting them would multiply the
+same terminal.
+
+### Clients and tags
+
+Assign a client and free-form tags to any project from the dashboard, then filter
+and roll up by client. Tags live in `tags.json` inside the data directory,
+separate from the log-derived numbers, so they survive rescans and rebuilds.
+
+---
+
+## Docker
+
+```bash
+docker compose up -d       # then open http://localhost:4317
+```
+
+`docker-compose.yml` mounts your session logs **read-only** and keeps tags plus
+the scan cache in a named volume:
+
+```yaml
+volumes:
+  - "${CLAUDE_LOGS_DIR:-$HOME/.claude/projects}:/logs:ro"
+  - claude-meter-data:/data
+```
+
+Set `TZ` to your own timezone — day boundaries are computed in local time, so a
+container left on UTC will split your evenings across the wrong dates:
+
+```bash
+TZ=Asia/Kolkata CLAUDE_METER_PORT=4317 docker compose up -d
+```
+
+| Variable | Purpose | Default |
+|---|---|---|
+| `CLAUDE_METER_LOG_PATHS` | Log directories (`;` or `:` separated) | `/logs` |
+| `CLAUDE_METER_DATA_DIR` | Tags + cache location | `/data` |
+| `HOST` / `PORT` | Bind address and port | `0.0.0.0` / `4317` |
+| `TZ` | Timezone for day boundaries | `UTC` |
+
+Scans are cached per file on mtime + size, so only changed sessions are re-read —
+a cold scan of ~500 MB of logs takes a few seconds, warm reloads are near-instant.
 
 ---
 

@@ -21,6 +21,7 @@ import { renderStatusline } from './commands/statusline-cmd.js';
 import { runInstallStatuslineCommand } from './commands/install-statusline-cmd.js';
 import { runUninstallStatuslineCommand } from './commands/uninstall-statusline-cmd.js';
 import { runWatch } from './commands/watch-cmd.js';
+import { runServeCommand } from './commands/serve-cmd.js';
 
 const program = new Command();
 
@@ -152,6 +153,16 @@ program
       json: opts.json,
       noColor: opts.color === false,
     });
+  });
+
+program
+  .command('serve')
+  .description('Start the work-hours dashboard (web UI)')
+  .option('--port <port>', 'Port to listen on', '4317')
+  .option('--host <host>', 'Address to bind (0.0.0.0 in containers)')
+  .option('--data-dir <dir>', 'Directory for config, tags and cache')
+  .action(async (opts) => {
+    await runServeCommand(opts);
   });
 
 // Default action (no subcommand = this-month)

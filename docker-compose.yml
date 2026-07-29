@@ -1,0 +1,23 @@
+services:
+  claude-meter:
+    build: .
+    image: cob-claude-meter:latest
+    container_name: claude-meter
+    restart: unless-stopped
+    ports:
+      - "${CLAUDE_METER_PORT:-4317}:4317"
+    volumes:
+      # Session logs — read-only, the dashboard never writes here.
+      - "${CLAUDE_LOGS_DIR:-${USERPROFILE:-$HOME}/.claude/projects}:/logs:ro"
+      # Client tags, aliases and the scan cache. Survives image rebuilds.
+      - claude-meter-data:/data
+    environment:
+      CLAUDE_METER_LOG_PATHS: /logs
+      CLAUDE_METER_DATA_DIR: /data
+      HOST: 0.0.0.0
+      PORT: 4317
+      # Container clock is UTC by default; set this so "days" match your calendar.
+      TZ: "${TZ:-UTC}"
+
+volumes:
+  claude-meter-data:

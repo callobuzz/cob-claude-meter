@@ -8,11 +8,13 @@
     "claude-meter": "dist/cli.js"
   },
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && node scripts/copy-assets.mjs",
     "dev": "tsc --watch",
     "start": "node dist/cli.js",
-    "test": "node --experimental-vm-modules node_modules/.bin/jest",
-    "lint": "eslint src/"
+    "serve": "node dist/cli.js serve",
+    "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js",
+    "lint": "eslint src/",
+    "prepublishOnly": "npm run build"
   },
   "engines": {
     "node": ">=18"

@@ -1,5 +1,5 @@
 import { ConfigManager } from '../../src/core/config-manager.js';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
@@ -54,7 +54,6 @@ describe('ConfigManager', () => {
   });
 
   it('handles corrupt config gracefully', () => {
-    const { writeFileSync } = require('node:fs');
     writeFileSync(join(tempDir, 'config.json'), 'NOT JSON', 'utf-8');
     const config = cm.load();
     expect(config.defaultCommand).toBe('this-month'); // falls back to defaults

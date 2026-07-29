@@ -1,5 +1,5 @@
 import { CacheManager } from '../../src/core/cache-manager.js';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
@@ -45,7 +45,6 @@ describe('CacheManager', () => {
   });
 
   it('handles corrupt cache file gracefully', () => {
-    const { writeFileSync } = require('node:fs');
     writeFileSync(join(tempDir, 'cache.json'), 'NOT JSON');
     expect(cache.read()).toBeNull();
   });

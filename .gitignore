@@ -4,6 +4,7 @@ dist/
 *.tgz
 .env
 .env.*
+!.env.example
 .claude-meter/
 .claude/
 

@@ -4,9 +4,11 @@ import { calculateCosts } from '../../src/core/cost-calculator.js';
 import { renderJsonReport, renderFullReport, renderCompactReport } from '../../src/core/renderer.js';
 import { getDateRange } from '../../src/core/date-ranges.js';
 import { formatTokens, formatCost } from '../../src/core/formatter.js';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const FIXTURE_PATH = join(__dirname, '..', 'fixtures', 'sample.jsonl');
+const here = dirname(fileURLToPath(import.meta.url));
+const FIXTURE_PATH = join(here, '..', 'fixtures', 'sample.jsonl');
 
 describe('Full pipeline integration', () => {
   it('scans fixture → aggregates → calculates costs → renders JSON', async () => {
