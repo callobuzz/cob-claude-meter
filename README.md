@@ -176,6 +176,10 @@ If you run several terminals at once the two diverge permanently — that gap is
 real concurrency, not an error. Summed is the headline number; wall-clock sits
 beside it so a 23-hour day is recognisable as double counting rather than a record.
 
+Both stay exact under filters. Narrow to one client and the wall-clock figure is
+recomputed as the union of just that client's sessions, not an approximation —
+so "how many real hours did this client take?" is answerable directly.
+
 ### Project identity
 
 A project is a **log directory**, not a `cwd`. `cwd` follows your shell, so one
@@ -426,6 +430,8 @@ under 100 ms. The cache survives restarts.
 | Hours look too low | Raise the idle cutoff in the header dropdown — long unattended builds may exceed it |
 | Hours look too high | Lower the idle cutoff, or read wall-clock instead of summed if you run several terminals |
 | Toast says logs were skipped | One or more logs were unreadable and totals are incomplete — check `docker compose logs` |
+| Projects missing from "All time" | Claude Code deleted their transcripts — run `claude-meter retention` to see which, and to extend the window |
+| "All time" only reaches back a month | Same cause: `cleanupPeriodDays` defaults to 30 days |
 
 ---
 
