@@ -1,7 +1,42 @@
 {
-  "version": "2026-03-22",
+  "version": "2026-07-30",
   "source": "https://platform.claude.com/docs/en/about-claude/pricing",
   "rates_per_million_tokens": {
+    "claude-fable-5": {
+      "input": 10.00,
+      "output": 50.00,
+      "cache_write_5m": 12.50,
+      "cache_write_1h": 20.00,
+      "cache_read": 1.00
+    },
+    "claude-mythos-5": {
+      "input": 10.00,
+      "output": 50.00,
+      "cache_write_5m": 12.50,
+      "cache_write_1h": 20.00,
+      "cache_read": 1.00
+    },
+    "claude-opus-5": {
+      "input": 5.00,
+      "output": 25.00,
+      "cache_write_5m": 6.25,
+      "cache_write_1h": 10.00,
+      "cache_read": 0.50
+    },
+    "claude-opus-4-8": {
+      "input": 5.00,
+      "output": 25.00,
+      "cache_write_5m": 6.25,
+      "cache_write_1h": 10.00,
+      "cache_read": 0.50
+    },
+    "claude-opus-4-7": {
+      "input": 5.00,
+      "output": 25.00,
+      "cache_write_5m": 6.25,
+      "cache_write_1h": 10.00,
+      "cache_read": 0.50
+    },
     "claude-opus-4-6": {
       "input": 5.00,
       "output": 25.00,
@@ -29,6 +64,13 @@
       "cache_write_5m": 18.75,
       "cache_write_1h": 30.00,
       "cache_read": 1.50
+    },
+    "claude-sonnet-5": {
+      "input": 2.00,
+      "output": 10.00,
+      "cache_write_5m": 2.50,
+      "cache_write_1h": 4.00,
+      "cache_read": 0.20
     },
     "claude-sonnet-4-6": {
       "input": 3.00,
@@ -72,5 +114,19 @@
       "cache_write_1h": 0.50,
       "cache_read": 0.03
     }
-  }
+  },
+  "scheduled_changes": [
+    {
+      "model": "claude-sonnet-5",
+      "effective": "2026-09-01",
+      "reason": "Introductory pricing ends; standard rates take effect.",
+      "rates": {
+        "input": 3.00,
+        "output": 15.00,
+        "cache_write_5m": 3.75,
+        "cache_write_1h": 6.00,
+        "cache_read": 0.30
+      }
+    }
+  ]
 }

@@ -1,6 +1,7 @@
 import { AggregationResult } from './aggregator.js';
 import { CostResult } from './cost-calculator.js';
 import { formatTokens, formatCost, formatPercentage } from './formatter.js';
+import { assessPricingStaleness, isPlaceholderModel } from './pricing.js';
 
 export interface RenderOptions {
   noColor?: boolean;
@@ -140,10 +141,41 @@ function modelShortName(model: string): string {
     .replace(/-\d{8}$/, '');
 }
 
+/**
+ * A guessed price must never look like a real one. Any model the bundled table
+ * could not price is reported explicitly, alongside a staleness note once the
+ * bundle is old enough that new models are the likely explanation.
+ */
+function pricingWarnings(cost: CostResult): string[] {
+  const lines: string[] = [];
+
+  const guessed = Object.entries(cost.by_model)
+    .filter(([, mc]) => mc.fallback)
+    .map(([model]) => modelShortName(model));
+
+  if (guessed.length > 0) {
+    lines.push(`  * ${guessed.join(', ')} not in the bundled table — priced at flagship rates (a guess).`);
+  }
+
+  const staleness = assessPricingStaleness();
+  if (staleness.overdue.length > 0) {
+    for (const change of staleness.overdue) {
+      lines.push(`  ! ${modelShortName(change.model)} rates changed on ${change.effective} and this build predates it.`);
+    }
+  } else if (guessed.length > 0 || staleness.stale) {
+    lines.push(`  Bundled pricing is ${staleness.ageDays} days old. Run \`claude-meter pricing\` for details.`);
+  }
+
+  return lines;
+}
+
 function computeModelPercentages(agg: AggregationResult): Record<string, number> {
   const total = agg.totals.entries_matched;
   const result: Record<string, number> = {};
   for (const [model, data] of Object.entries(agg.by_model)) {
+    // Placeholders like <synthetic> are Claude Code's own turns, always zero
+    // tokens. Listing them as a "model" alongside opus and sonnet is noise.
+    if (isPlaceholderModel(model)) continue;
     const entries = (data as any).entries ?? (data as any).entries_matched ?? 0;
     result[model] = total > 0 ? (entries / total) * 100 : 0;
   }
@@ -210,7 +242,8 @@ export function renderFullReport(
   lines.push(sectionRow(''));
   lines.push(sectionRow('  By Model:'));
   for (const [model, mc] of Object.entries(cost.by_model)) {
-    const short = modelShortName(model);
+    if (isPlaceholderModel(model)) continue; // always $0.00; nothing to show
+    const short = modelShortName(model) + (mc.fallback ? ' *' : '');
     lines.push(sectionRow(`    ${short.padEnd(18)} ${formatCost(mc.total)}${' '.repeat(24)}`));
   }
   lines.push(sectionBottom());
@@ -218,6 +251,7 @@ export function renderFullReport(
 
   // Pricing footer
   lines.push(`  Pricing: ${cost.pricing_source} defaults (${cost.pricing_version})`);
+  lines.push(...pricingWarnings(cost));
   lines.push('');
 
   return lines.join('\n');
@@ -250,11 +284,13 @@ export function renderCompactReport(
 
   // Cost
   const costParts = Object.entries(cost.by_model)
+    .filter(([m]) => !isPlaceholderModel(m))
     .map(([m, mc]) => `${modelShortName(m).split('-')[0]} ${formatCost(mc.total)}`)
     .join(' | ');
   lines.push(`  Cost:     ${formatCost(cost.total)} (${costParts})`);
   lines.push('');
   lines.push(`  Pricing:  ${cost.pricing_source} defaults`);
+  lines.push(...pricingWarnings(cost));
   lines.push('');
 
   return lines.join('\n');

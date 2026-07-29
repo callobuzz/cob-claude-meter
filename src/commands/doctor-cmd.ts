@@ -2,7 +2,7 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { ConfigManager } from '../core/config-manager.js';
 import { discoverLogPaths, validatePath } from '../core/path-resolver.js';
-import { getPricingVersion, getAllModelIds } from '../core/pricing.js';
+import { getAllModelIds, assessPricingStaleness, PRICING_STALE_AFTER_DAYS } from '../core/pricing.js';
 import { CacheManager } from '../core/cache-manager.js';
 import { readRetentionSetting, scanRetentionState } from '../core/retention.js';
 
@@ -18,10 +18,19 @@ export async function runDoctorCommand(): Promise<string> {
   const configExists = existsSync(configPath);
   lines.push(`  Config:     ${configPath} ${configExists ? '\u2713' : '\u2717 not found'}`);
 
-  // Pricing status
+  // Pricing status. Age matters as much as presence: Anthropic ships models
+  // faster than this package publishes, and an unknown model is silently
+  // priced at flagship rates rather than failing loudly.
   try {
-    const version = getPricingVersion();
-    lines.push(`  Pricing:    bundled (${version}) \u2713`);
+    const staleness = assessPricingStaleness();
+    const mark = staleness.stale || staleness.overdue.length > 0 ? '\u2717' : '\u2713';
+    lines.push(`  Pricing:    bundled (${staleness.version}, ${staleness.ageDays} days old) ${mark}`);
+    for (const change of staleness.overdue) {
+      lines.push(`              \u2717 ${change.model} rates changed on ${change.effective}; this build is behind`);
+    }
+    if (staleness.stale) {
+      lines.push(`              Over ${PRICING_STALE_AFTER_DAYS} days old. Run \`claude-meter pricing --scan\`.`);
+    }
   } catch {
     lines.push('  Pricing:    \u2717 could not load bundled pricing');
   }

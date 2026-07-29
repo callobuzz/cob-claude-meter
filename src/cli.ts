@@ -23,6 +23,7 @@ import { runUninstallStatuslineCommand } from './commands/uninstall-statusline-c
 import { runWatch } from './commands/watch-cmd.js';
 import { runServeCommand } from './commands/serve-cmd.js';
 import { runRetentionCommand } from './commands/retention-cmd.js';
+import { runPricingCommand } from './commands/pricing-cmd.js';
 
 const program = new Command();
 
@@ -175,6 +176,16 @@ program
   .option('--settings <path>', 'Path to Claude Code settings.json')
   .action(async (opts) => {
     const output = await runRetentionCommand(opts);
+    console.log(output);
+  });
+
+program
+  .command('pricing')
+  .description('Show bundled model pricing and whether it has gone stale')
+  .option('--scan', 'Read your logs and flag any model the bundled table cannot price')
+  .option('--json', 'Output as JSON')
+  .action(async (opts) => {
+    const output = await runPricingCommand(opts);
     console.log(output);
   });
 

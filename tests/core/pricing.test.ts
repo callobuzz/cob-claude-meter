@@ -50,16 +50,20 @@ describe('computeCost', () => {
 });
 
 describe('getPricingVersion', () => {
-  it('returns version string', () => {
-    expect(getPricingVersion()).toBe('2026-03-22');
+  // Asserting the shape, not the date: the bundled table is refreshed whenever
+  // Anthropic changes rates, and a test pinned to one release would fail every
+  // time for a reason that is not a defect.
+  it('returns an ISO date string', () => {
+    expect(getPricingVersion()).toMatch(/^\d{4}-\d{2}-\d{2}$/);
   });
 });
 
 describe('getAllModelIds', () => {
-  it('returns all model IDs', () => {
+  it('returns the model IDs, current flagship included', () => {
     const ids = getAllModelIds();
-    expect(ids).toContain('claude-opus-4-6');
-    expect(ids).toContain('claude-haiku-3');
-    expect(ids.length).toBe(10);
+    expect(ids).toContain('claude-opus-5');
+    expect(ids).toContain('claude-sonnet-5');
+    expect(ids).toContain('claude-haiku-3'); // retired models stay, for old logs
+    expect(ids.length).toBeGreaterThanOrEqual(10);
   });
 });

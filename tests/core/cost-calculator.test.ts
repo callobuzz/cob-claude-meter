@@ -90,6 +90,6 @@ describe('calculateCosts', () => {
   it('includes pricing metadata', () => {
     const result = calculateCosts(makeAggResult());
     expect(result.pricing_source).toBe('bundled');
-    expect(result.pricing_version).toBe('2026-03-22');
+    expect(result.pricing_version).toMatch(/^\d{4}-\d{2}-\d{2}$/);
   });
 });

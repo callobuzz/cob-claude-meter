@@ -73,6 +73,7 @@ for today and for every session you have already run.
 | **JSON Output** | Pipe to jq, scripts, dashboards |
 | **Cross-Platform** | Windows, macOS, Linux |
 | **Zero Config** | Auto-discovers your Claude Code logs |
+| **Staleness Aware** | Warns when a model in your logs is newer than its price table |
 | **Offline & Private** | 100% local — no network calls, no telemetry |
 
 ---
@@ -115,6 +116,8 @@ claude-meter paths                            # Show log paths
 claude-meter doctor                           # Full diagnostics
 claude-meter setup                            # Interactive path setup
 claude-meter retention                        # Check / extend how long logs are kept
+claude-meter pricing                          # Show bundled rates and their age
+claude-meter pricing --scan                   # Flag models your copy cannot price
 ```
 
 ### Log retention
@@ -514,7 +517,7 @@ under 100 ms. The cache survives restarts.
 └──────────────────────────────────────────────────────────────┘
 
 ┌─ By Model ───────────────────────────────────────────────────┐
-│  claude-opus-4-6             92.3%    ██████████████████░░    │
+│  claude-opus-5               92.3%    ██████████████████░░    │
 │  claude-haiku-4-5-20251001    7.7%    ██░░░░░░░░░░░░░░░░░░    │
 └──────────────────────────────────────────────────────────────┘
 
@@ -528,11 +531,11 @@ under 100 ms. The cache survives restarts.
 │  Total:              $8,531.68                               │
 │                                                              │
 │  By Model:                                                   │
-│    opus-4-6:         $7,882.23                               │
+│    opus-5:           $7,882.23                               │
 │    haiku-4-5:        $649.45                                 │
 └──────────────────────────────────────────────────────────────┘
 
-  Pricing: bundled defaults (2026-03-22)
+  Pricing: bundled defaults (2026-07-30)
 ```
 
 ### Compact Report
@@ -545,7 +548,7 @@ Claude Meter — Today (Mar 22, 2026)
   Tokens:   Input 245.3K | Output 892.1K | Fresh 1.1M
   Cache:    Read 312.5M | 5m 8.2M | 1h 14.7M | Full 335.4M
 
-  Models:   opus-4-6 94% | haiku-4-5 6%
+  Models:   opus-5 92% | sonnet-5 8%
 
   Cost:     $142.38 (opus $134.10 | haiku $8.28)
 
@@ -581,20 +584,47 @@ Config is stored at `~/.claude-meter/config.json`.
 
 ## Pricing
 
-Bundled with official Anthropic pricing (March 2026). Updated with each npm release.
+Bundled with official Anthropic pricing (2026-07-30). Updated with each npm release.
 
 | Model | Input | Output | Cache Write 5m | Cache Write 1h | Cache Read |
 |---|---|---|---|---|---|
-| Opus 4.6 | $5/M | $25/M | $6.25/M | $10/M | $0.50/M |
-| Opus 4.5 | $5/M | $25/M | $6.25/M | $10/M | $0.50/M |
-| Sonnet 4.6 | $3/M | $15/M | $3.75/M | $6/M | $0.30/M |
-| Sonnet 4.5 | $3/M | $15/M | $3.75/M | $6/M | $0.30/M |
+| Fable 5 | $10/M | $50/M | $12.50/M | $20/M | $1/M |
+| Opus 5 | $5/M | $25/M | $6.25/M | $10/M | $0.50/M |
+| Opus 4.8 / 4.7 / 4.6 / 4.5 | $5/M | $25/M | $6.25/M | $10/M | $0.50/M |
+| Sonnet 5 (intro, to 2026-08-31) | $2/M | $10/M | $2.50/M | $4/M | $0.20/M |
+| Sonnet 4.6 / 4.5 | $3/M | $15/M | $3.75/M | $6/M | $0.30/M |
 | Haiku 4.5 | $1/M | $5/M | $1.25/M | $2/M | $0.10/M |
 
-Override pricing per-model:
+Run `claude-meter pricing` for the full table, including retired models kept for
+old logs. Override any rate per-model:
+
 ```bash
-claude-meter config --set 'pricing.overrides.claude-opus-4-6.input=6.00'
+claude-meter config --set 'pricing.overrides.claude-opus-5.input=6.00'
 ```
+
+### Keeping pricing accurate
+
+Anthropic ships models faster than this package publishes, so an installed copy
+can fall behind. Nothing is fetched at runtime — the tool makes no network calls
+— so instead it tells you when its own table is the problem:
+
+```bash
+claude-meter pricing --scan
+```
+
+This reads your logs and reports any model the bundled table cannot price. Those
+are costed at flagship rates as a fallback, and marked with `*` in reports so a
+guess never looks like a real number. `claude-meter doctor` shows the same
+staleness in one line, and reports warn once the table is over 90 days old.
+
+If a model is missing, `npm i -g cob-claude-meter` is the fix. If you would
+rather not wait for a release, set the rate yourself with `pricing.overrides`
+above — that takes precedence over the bundled table.
+
+> **Why not fetch prices automatically?** It would mean a network call on a tool
+> whose whole point is that nothing leaves your machine, against a docs page with
+> no stable machine-readable format. Detecting staleness offline gets you the
+> same protection without either downside.
 
 ---
 
@@ -633,7 +663,11 @@ No. Claude Meter is 100% local. No network calls, no telemetry, no analytics.
 Very accurate. Unlike other tools, Claude Meter uses the exact 5-minute and 1-hour cache creation token breakdowns from your logs — not estimates or ranges.
 
 **Q: Which models does it support?**
-All Claude models found in your logs are automatically detected and priced. Unknown models fall back to Opus pricing with a warning.
+All Claude models found in your logs are automatically detected and priced. A model
+that is not in the bundled table falls back to flagship (Opus) rates and is marked
+with `*` in reports, so an estimate is never mistaken for a real rate — see
+[Keeping pricing accurate](#keeping-pricing-accurate). Placeholder ids that Claude
+Code writes for its own turns (`<synthetic>`) carry no tokens and are excluded.
 
 **Q: How fast is it?**
 Typical runs complete in < 2 seconds, even with 100k+ log entries across 2,500+ files.
