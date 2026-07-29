@@ -238,6 +238,59 @@ that a project consumed roughly N hours — rather than an invoice generated
 automatically. It is far closer to reality than reconstructing a month from
 memory, which is the usual alternative.
 
+### Limitations
+
+This tool reads Claude Code's session transcripts. It writes nothing to them and
+creates no data of its own, which makes it fully retroactive — and also means
+**Claude Code's own settings decide what it can ever see.** Know these before you
+rely on the numbers.
+
+#### Claude Code deletes your logs — this is the big one
+
+Claude Code deletes `~/.claude/projects/<project>/<session>.jsonl` on startup
+once the file is older than **`cleanupPeriodDays`, which defaults to 30 days**.
+Consequences, stated plainly:
+
+- **History has a hard ceiling.** On the default, "All time" means the last 30
+  days. No setting in this tool changes that.
+- **The loss is silent.** A pruned project keeps its folder (and its
+  `memory/`, `sessions-index.json`), so it stops appearing in reports rather
+  than showing zero. Nothing warns you.
+- **It is irreversible.** The per-message timestamps that active-time is derived
+  from existed only inside the deleted transcript. Nothing reconstructs them.
+- **Extending it is not retroactive.** Raising `cleanupPeriodDays` stops the next
+  sweep; it recovers nothing.
+
+Run `claude-meter retention` to see your current window, which projects have
+already been pruned, and what a longer window costs in disk and privacy. See
+[Your logs expire](#your-logs-expire--that-limits-how-far-back-this-can-look).
+
+#### Other Claude Code settings that zero out the data
+
+| Setting | Effect here |
+|---|---|
+| `CLAUDE_CODE_SKIP_PROMPT_HISTORY` env var | No transcripts written at all — **no hours, ever**, for any session run with it set |
+| `--no-session-persistence` (with `-p`) | That non-interactive run leaves no transcript |
+| `persistSession: false` (Agent SDK) | Same, for SDK-driven sessions |
+| A `settings.json` Claude Code can't parse | Claude Code pauses its cleanup sweep; your retention is not what you think it is |
+
+#### Scope limits
+
+- **Claude Code only.** Work in your editor, terminal, browser or another AI tool
+  is invisible. This measures Claude Code sessions, not your working day.
+- **This machine only.** It reads local log directories. Two laptops means two
+  separate sets of numbers; there is no aggregation across machines.
+- **Subagent transcripts are excluded on purpose.** They run *inside* a parent
+  session, so counting them would multiply the same wall-clock time.
+- **Idle cutoff changes every number.** A month at a 2-minute cutoff reads much
+  lower than at 10. Pick one and stay on it, or periods stop being comparable.
+- **Day boundaries follow `TZ`.** Change the timezone and evening work moves
+  between days. In Docker, set `TZ` explicitly — the container is UTC otherwise.
+- **Project identity comes from the session's working directory.** Move a project
+  to a different path and it becomes a separate row from that point on.
+- **Tags do not sync.** The Docker store (`./meter-data/`) and the CLI store
+  (`~/.claude-meter/`) are independent until you copy `tags.json` across.
+
 ---
 
 ## Running the Dashboard
