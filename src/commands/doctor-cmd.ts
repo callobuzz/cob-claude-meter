@@ -4,6 +4,7 @@ import { ConfigManager } from '../core/config-manager.js';
 import { discoverLogPaths, validatePath } from '../core/path-resolver.js';
 import { getPricingVersion, getAllModelIds } from '../core/pricing.js';
 import { CacheManager } from '../core/cache-manager.js';
+import { readRetentionSetting, scanRetentionState } from '../core/retention.js';
 
 export async function runDoctorCommand(): Promise<string> {
   const mgr = new ConfigManager();
@@ -71,6 +72,30 @@ export async function runDoctorCommand(): Promise<string> {
     lines.push(`    ${modelIds.join(', ')}`);
   } catch {
     lines.push('  Models:     \u2717 could not load');
+  }
+
+  lines.push('');
+
+  // Log retention. Worth surfacing here because a short window is invisible
+  // otherwise: pruned projects vanish from reports rather than showing zero.
+  const retention = readRetentionSetting();
+  const retentionState = scanRetentionState([...allPaths.keys()]);
+  lines.push('  Log retention:');
+  if (retention.parseError) {
+    lines.push(`    \u2717 ${retention.path} is unreadable \u2014 ${retention.parseError}`);
+  } else {
+    const source = retention.isDefault ? 'Claude Code default' : 'configured';
+    lines.push(`    cleanupPeriodDays  ${retention.days} days (${source})`);
+  }
+  if (retentionState.oldestAgeDays !== null) {
+    lines.push(`    Oldest log:        ${retentionState.oldestAgeDays.toFixed(1)} days`);
+  }
+  if (retentionState.pruned.length > 0) {
+    const sessions = retentionState.pruned.reduce((acc, p) => acc + p.sessions, 0);
+    lines.push(`    \u2717 ${retentionState.pruned.length} projects already lost their logs (${sessions} sessions)`);
+  }
+  if (retention.isDefault) {
+    lines.push(`    Reports cannot see past ${retention.days} days. Run \`claude-meter retention\` to extend.`);
   }
 
   lines.push('');

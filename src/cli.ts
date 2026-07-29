@@ -22,6 +22,7 @@ import { runInstallStatuslineCommand } from './commands/install-statusline-cmd.j
 import { runUninstallStatuslineCommand } from './commands/uninstall-statusline-cmd.js';
 import { runWatch } from './commands/watch-cmd.js';
 import { runServeCommand } from './commands/serve-cmd.js';
+import { runRetentionCommand } from './commands/retention-cmd.js';
 
 const program = new Command();
 
@@ -163,6 +164,18 @@ program
   .option('--data-dir <dir>', 'Directory for config, tags and cache')
   .action(async (opts) => {
     await runServeCommand(opts);
+  });
+
+program
+  .command('retention')
+  .description('Check how long Claude Code keeps session logs, and extend it')
+  .option('--days <days>', 'Retention to set, in days', String(3650))
+  .option('--dry-run', 'Show the explanation and the numbers without changing anything')
+  .option('--yes', 'Skip the confirmation prompt')
+  .option('--settings <path>', 'Path to Claude Code settings.json')
+  .action(async (opts) => {
+    const output = await runRetentionCommand(opts);
+    console.log(output);
   });
 
 // Default action (no subcommand = this-month)

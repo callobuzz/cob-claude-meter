@@ -114,6 +114,16 @@ claude-meter config --reset                   # Reset to defaults
 claude-meter paths                            # Show log paths
 claude-meter doctor                           # Full diagnostics
 claude-meter setup                            # Interactive path setup
+claude-meter retention                        # Check / extend how long logs are kept
+```
+
+### Log retention
+
+```bash
+claude-meter retention             # explain, then ask before changing anything
+claude-meter retention --dry-run   # the explanation and the numbers only
+claude-meter retention --days 365  # a different window
+claude-meter retention --yes       # skip the prompt (scripts)
 ```
 
 ### Statusline
@@ -369,16 +379,35 @@ days**) at startup. This tool derives every number from those files, so once the
 are gone the hours are gone with them — "All time" can only reach as far back as
 your retention window.
 
-If you bill from these numbers, raise it before you need it. In
-`~/.claude/settings.json`:
+If you bill from these numbers, raise it before you need it:
+
+```bash
+claude-meter retention
+```
+
+It prints your current setting, what is on disk, which projects have already
+lost their logs, and what a longer window costs — then asks before writing
+anything. `--dry-run` shows all of that and changes nothing.
+
+The two costs it will quote you, because neither is free:
+
+- **Disk.** It measures your actual growth rate and extrapolates. At 28 MB/day,
+  ten years of retention is roughly 100 GB.
+- **Privacy.** Transcripts are plaintext and unencrypted. Anything passing
+  through a tool is written to them, including file contents and command
+  output, so a credential read from a `.env` is in there too. A longer window
+  means a longer-lived copy on disk.
+
+Equivalent manual edit in `~/.claude/settings.json`:
 
 ```json
 { "cleanupPeriodDays": 3650 }
 ```
 
-A pruned project leaves its directory behind with a `sessions-index.json` but no
-`.jsonl` transcripts, so it silently drops out of the report rather than showing
-zero.
+Extending retention never recovers anything already deleted — it only stops the
+next sweep. A pruned project leaves its directory behind with a
+`sessions-index.json` but no `.jsonl` transcripts, so it silently drops out of
+the report rather than showing zero. `claude-meter doctor` flags this too.
 
 ### Performance
 
