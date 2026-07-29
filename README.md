@@ -235,7 +235,7 @@ can use either — or both, on different ports.
 |---|---|---|
 | Command | `claude-meter serve` | `docker compose up -d` |
 | Needs Docker Desktop | no | yes |
-| Data location | `~/.claude-meter/` | named volume `claude-meter-data` |
+| Data location | `~/.claude-meter/` | `./meter-data/` on your machine |
 | Timezone | your OS timezone, automatic | set `TZ` yourself |
 | Survives reboot | start it again | auto-starts with Docker |
 | Best for | quick local use | always-on, set and forget |
@@ -287,22 +287,35 @@ TZ=Asia/Kolkata                                 # your timezone — see warning 
 > zone name works.
 
 `docker-compose.yml` mounts your session logs **read-only** and keeps tags plus
-the scan cache in a named volume:
+the scan cache in a folder on your machine:
 
 ```yaml
 volumes:
   - "${CLAUDE_LOGS_DIR:-$HOME/.claude/projects}:/logs:ro"
-  - claude-meter-data:/data
+  - "${CLAUDE_METER_DATA_HOST_DIR:-./meter-data}:/data"
 ```
+
+A host folder rather than a named Docker volume, on purpose. Assigning clients
+to twenty projects is slow manual work, and `docker compose down -v` deletes
+named volumes without prompting. On the host it survives every compose command
+and you can back it up by copying one file.
+
+`meter-data/` is git-ignored: it holds your client names and absolute project
+paths, which do not belong in a public repository.
 
 | Variable | Purpose | Default |
 |---|---|---|
 | `CLAUDE_LOGS_DIR` | Host path to your Claude Code logs | `$HOME/.claude/projects` |
 | `CLAUDE_METER_PORT` | Host port to publish | `4317` |
+| `CLAUDE_METER_DATA_HOST_DIR` | Host folder holding `tags.json` + cache | `./meter-data` |
 | `CLAUDE_METER_LOG_PATHS` | Log directories inside the container (`;` or `:` separated) | `/logs` |
 | `CLAUDE_METER_DATA_DIR` | Tags + cache location inside the container | `/data` |
 | `HOST` / `PORT` | Bind address and port inside the container | `0.0.0.0` / `4317` |
 | `TZ` | Timezone for day boundaries | `UTC` |
+
+> `CLAUDE_METER_DATA_HOST_DIR` and `CLAUDE_METER_DATA_DIR` are deliberately
+> different names. The first is the host folder, the second is the path inside
+> the container — exporting the latter for the CLI must not move the mount.
 
 ### Managing the container
 
@@ -317,22 +330,55 @@ docker compose up -d --build   # rebuild after changing the code
 docker compose logs -f         # follow the logs
 docker compose ps              # check status
 
-docker compose down -v         # DELETE container AND volume — tags lost
+docker compose down -v         # DELETE container and named volumes
 ```
 
-Only the last one destroys anything. Deleting the container is safe because tags
-and cache live in the volume, not the container.
+None of these touch your tags, because `meter-data/` is a folder on your machine
+rather than a Docker volume — including `down -v`, which is the command that used
+to destroy them.
 
 ### What your data is worth
 
-| Data | Where | If the volume is deleted |
+| Data | Where | Risk |
 |---|---|---|
 | Session logs | your machine, mounted **read-only** | untouched — no Docker action can harm them |
-| `tags.json` | volume / `~/.claude-meter/` | **gone for good** — the only irreplaceable file |
-| `timeline-cache.json` | volume / `~/.claude-meter/` | gone, rebuilds itself on the next scan |
+| `tags.json` | `./meter-data/` or `~/.claude-meter/` | the only irreplaceable file — back it up |
+| `timeline-cache.json` | `./meter-data/` or `~/.claude-meter/` | disposable, rebuilds itself on the next scan |
 
-Worst case you re-tag your projects. The read-only mount guarantees your actual
-Claude Code history is never written to.
+Back it up by copying one file:
+
+```bash
+cp meter-data/tags.json ~/backups/claude-meter-tags.json
+```
+
+The keys in `tags.json` are the project paths recorded inside your logs, not the
+mount paths, so the same file works under Docker and under `claude-meter serve`.
+Copy it into `~/.claude-meter/` to share tags between the two.
+
+> **Docker and the CLI keep separate stores.** Tagging in the container writes to
+> `./meter-data/`; tagging via `claude-meter serve` writes to `~/.claude-meter/`.
+> Neither sees the other until you copy the file across.
+
+The read-only log mount guarantees your actual Claude Code history is never
+written to.
+
+### Your logs expire — that limits how far back this can look
+
+Claude Code deletes session files older than `cleanupPeriodDays` (**default 30
+days**) at startup. This tool derives every number from those files, so once they
+are gone the hours are gone with them — "All time" can only reach as far back as
+your retention window.
+
+If you bill from these numbers, raise it before you need it. In
+`~/.claude/settings.json`:
+
+```json
+{ "cleanupPeriodDays": 3650 }
+```
+
+A pruned project leaves its directory behind with a `sessions-index.json` but no
+`.jsonl` transcripts, so it silently drops out of the report rather than showing
+zero.
 
 ### Performance
 

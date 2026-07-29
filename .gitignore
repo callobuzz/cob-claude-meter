@@ -14,3 +14,8 @@ docs/prd.md
 docs/working-ps.md
 DEPLOY.md
 docs/marketing/
+
+# Local dashboard data: client assignments, tags and the scan cache.
+# Ignored on purpose — it holds your client names and absolute project paths,
+# and this repo is public. Back it up outside git (see README).
+meter-data/

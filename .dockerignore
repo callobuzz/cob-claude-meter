@@ -8,3 +8,4 @@ coverage
 *.log
 .cob-anchor
 .claude
+meter-data

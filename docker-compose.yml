@@ -9,8 +9,17 @@ services:
     volumes:
       # Session logs — read-only, the dashboard never writes here.
       - "${CLAUDE_LOGS_DIR:-${USERPROFILE:-$HOME}/.claude/projects}:/logs:ro"
-      # Client tags, aliases and the scan cache. Survives image rebuilds.
-      - claude-meter-data:/data
+      # Client assignments, tags, aliases and the scan cache.
+      #
+      # A host folder, deliberately not a named volume: client tagging is slow
+      # manual work and `docker compose down -v` deletes named volumes without
+      # asking. On the host it survives every compose command, and you can back
+      # it up by copying one file.
+      #
+      # Distinct name from CLAUDE_METER_DATA_DIR below on purpose — that one is
+      # the path *inside* the container, and exporting it for the npm CLI must
+      # not silently move the host mount.
+      - "${CLAUDE_METER_DATA_HOST_DIR:-./meter-data}:/data"
     environment:
       CLAUDE_METER_LOG_PATHS: /logs
       CLAUDE_METER_DATA_DIR: /data
@@ -18,6 +27,3 @@ services:
       PORT: 4317
       # Container clock is UTC by default; set this so "days" match your calendar.
       TZ: "${TZ:-UTC}"
-
-volumes:
-  claude-meter-data:
