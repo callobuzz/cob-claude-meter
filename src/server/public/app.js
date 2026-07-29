@@ -75,6 +75,75 @@ function monthKey(dayKey) {
   return dayKey.slice(0, 7);
 }
 
+/* ---------- interval math ----------
+   Wall-clock is a union, so it cannot be summed from per-project scalars.
+   The report ships each project's merged intervals; these fold any subset of
+   them back into a union, which is what makes wall-clock work under filters.
+
+   mergeIntervals/sumDuration deliberately mirror src/core/time-tracker.ts.
+   This file is served to the browser verbatim — no bundler, no build step — so
+   it cannot import the TypeScript module. The union-checks in the smoke suite
+   assert both implementations agree on the live report. */
+
+/** Merges overlapping/touching intervals. Input may be unsorted. */
+function mergeIntervals(intervals) {
+  if (intervals.length === 0) return [];
+  const sorted = [...intervals].sort((a, b) => a[0] - b[0]);
+  const out = [[sorted[0][0], sorted[0][1]]];
+  for (let i = 1; i < sorted.length; i++) {
+    const last = out[out.length - 1];
+    const [start, end] = sorted[i];
+    if (start <= last[1]) {
+      if (end > last[1]) last[1] = end;
+    } else {
+      out.push([start, end]);
+    }
+  }
+  return out;
+}
+
+function sumDuration(intervals) {
+  let total = 0;
+  for (const [start, end] of intervals) total += end - start;
+  return total;
+}
+
+/** Total overlap between a set of intervals and the window [start, end). */
+function durationWithin(intervals, start, end) {
+  let total = 0;
+  for (const [a, b] of intervals) {
+    const lo = a > start ? a : start;
+    const hi = b < end ? b : end;
+    if (hi > lo) total += hi - lo;
+  }
+  return total;
+}
+
+/** Union of the merged intervals of the given projects. */
+function unionOf(projects) {
+  const all = [];
+  for (const p of projects) {
+    if (p.intervals) all.push(...p.intervals);
+  }
+  return mergeIntervals(all);
+}
+
+/**
+ * Local-time [start, end) bounds of a timeline bucket key.
+ *
+ * These must match how the server split intervals across days — local
+ * midnight, not UTC — or a filtered day would disagree with an unfiltered one.
+ */
+function bucketBounds(key, groupBy) {
+  if (groupBy === 'month') {
+    const [y, m] = key.split('-').map(Number);
+    return [new Date(y, m - 1, 1).getTime(), new Date(y, m, 1).getTime()];
+  }
+  const [y, m, d] = key.split('-').map(Number);
+  const span = groupBy === 'week' ? 7 : 1; // week keys are the Monday
+  return [new Date(y, m - 1, d).getTime(), new Date(y, m - 1, d + span).getTime()];
+}
+
 function toast(message, isError = false) {
   const el = $('toast');
   el.textContent = message;
@@ -194,8 +263,11 @@ function renderStats() {
   const filtered = shown.length !== report.projects.length;
 
   const totalMs = shown.reduce((acc, p) => acc + p.totalMs, 0);
-  const wallMs = filtered ? null : report.totals.wallClockMs;
-  const days = report.totals.activeDays;
+  // Union of exactly the projects on screen — correct filtered or not.
+  const union = unionOf(shown);
+  const wallMs = sumDuration(union);
+  // Days the visible projects were actually active, not the report-wide count.
+  const days = new Set(shown.flatMap((p) => Object.keys(p.byDay))).size;
   const sessions = shown.reduce((acc, p) => acc + p.sessionCount, 0);
 
   $('stat-total').innerHTML = `${fmtHours(totalMs)}<span class="unit">h</span>`;
@@ -203,12 +275,10 @@ function renderStats() {
     ? `${shown.length} of ${report.projects.length} projects`
     : labelFor(report.rangeLabel);
 
-  $('stat-wall').innerHTML = wallMs === null
-    ? '<span class="muted" style="font-size:0.5em">n/a filtered</span>'
-    : `${fmtHours(wallMs)}<span class="unit">h</span>`;
+  $('stat-wall').innerHTML = `${fmtHours(wallMs)}<span class="unit">h</span>`;
   $('stat-concurrency').textContent = wallMs
-    ? `${(report.totals.totalMs / wallMs).toFixed(2)}× avg concurrency`
-    : 'clear filters to see';
+    ? `${(totalMs / wallMs).toFixed(2)}× avg concurrency`
+    : 'no overlapping sessions';
 
   $('stat-days').textContent = String(days);
   $('stat-avg').textContent = days ? `${fmtHours(totalMs / days)} h/day avg` : '—';
@@ -347,7 +417,9 @@ function renderTimeline() {
     return;
   }
 
-  const allowed = visibleIds();
+  const shown = visibleProjects();
+  const allowed = new Set(shown.map((p) => p.id));
+  const union = unionOf(shown);
   const bucketOf = { day: (d) => d, week: weekKey, month: monthKey }[state.groupBy];
 
   // Re-derive buckets from per-day project splits so filters apply here too.
@@ -367,8 +439,14 @@ function renderTimeline() {
 
     bucket.totalMs += kept;
     bucket.days.add(day.day);
-    // Wall-clock is only meaningful unfiltered — the union can't be re-derived from parts.
-    if (allowed.size === report.projects.length) bucket.wallMs += day.wallClockMs;
+  }
+
+  // Wall-clock per bucket: clip the visible union to the bucket's local-time
+  // window. Summing per-day wall-clock would double-count nothing but would
+  // still be wrong for week/month, where sessions span the boundary.
+  for (const bucket of buckets.values()) {
+    const [from, to] = bucketBounds(bucket.key, state.groupBy);
+    bucket.wallMs = durationWithin(union, from, to);
   }
 
   const rows = [...buckets.values()].sort((a, b) => (a.key < b.key ? 1 : -1));
@@ -378,7 +456,6 @@ function renderTimeline() {
   }
 
   const max = Math.max(...rows.map((r) => r.totalMs), 1);
-  const unfiltered = allowed.size === report.projects.length;
 
   const body = rows.map((r) => {
     const pct = (r.totalMs / max) * 100;
@@ -409,7 +486,7 @@ function renderTimeline() {
           </div>
         </td>
         <td class="num hours">${fmtHours(r.totalMs)}</td>
-        <td class="num hours-alt">${unfiltered ? fmtHours(r.wallMs) : '—'}</td>
+        <td class="num hours-alt">${fmtHours(r.wallMs)}</td>
         <td class="num dim">${projects.length}</td>
       </tr>`;
 
@@ -451,7 +528,9 @@ function renderClients() {
 
   const groups = new Map();
   for (const p of list) {
-    const key = p.client ?? ' untagged';
+    // Escape, not a literal NUL: a raw control byte makes the file read as
+    // binary to grep and diff tools. Sorts before any real client name.
+    const key = p.client ?? '\u0000untagged';
     if (!groups.has(key)) groups.set(key, { name: p.client ?? 'Untagged', totalMs: 0, projects: [], days: new Set() });
     const g = groups.get(key);
     g.totalMs += p.totalMs;

@@ -2,7 +2,7 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { buildTimeReport } from '../../src/core/time-aggregator.js';
-import { scanSessionTimestamps } from '../../src/core/time-tracker.js';
+import { mergeIntervals, scanSessionTimestamps, sumDuration } from '../../src/core/time-tracker.js';
 
 const MIN = 60_000;
 
@@ -231,6 +231,47 @@ describe('buildTimeReport', () => {
 
     const report = await buildTimeReport({ logPaths: [logs], idleSeconds: 300 });
     expect(report.projects.map(p => p.name)).toEqual(['big', 'small']);
+  });
+
+  it('ships merged intervals that sum to the project wall-clock', async () => {
+    // Two sessions of the same project overlapping by 30 min: 2h summed,
+    // 1.5h wall-clock, and the shipped intervals must be the merged union.
+    const start = new Date(2026, 6, 15, 9, 0);
+    project('P--app')
+      .session('a', 'J:\\app', start, 61, 1)
+      .session('b', 'J:\\app', new Date(start.getTime() + 30 * MIN), 61, 1);
+
+    const report = await buildTimeReport({ logPaths: [logs], idleSeconds: 300 });
+    const p = report.projects[0];
+
+    expect(p.totalMs).toBe(120 * MIN);
+    expect(p.wallClockMs).toBe(90 * MIN);
+    expect(p.intervals).toHaveLength(1); // overlapping halves collapse into one
+    expect(sumDuration(p.intervals)).toBe(p.wallClockMs);
+  });
+
+  it('lets a client re-derive wall-clock for any subset of projects', async () => {
+    // This is the whole reason intervals are shipped: wall-clock is a union, so
+    // a filtered total cannot be reconstructed from per-project scalars.
+    const start = new Date(2026, 6, 15, 9, 0);
+    project('P--a').session('a', 'J:\\a', start, 61, 1);                                   // 09:00-10:00
+    project('P--b').session('b', 'J:\\b', new Date(start.getTime() + 30 * MIN), 61, 1);    // 09:30-10:30
+    project('P--c').session('c', 'J:\\c', new Date(2026, 6, 15, 14, 0), 61, 1);            // 14:00-15:00
+
+    const report = await buildTimeReport({ logPaths: [logs], idleSeconds: 300 });
+    const by = Object.fromEntries(report.projects.map(p => [p.name, p]));
+
+    const union = (names: string[]) =>
+      sumDuration(mergeIntervals(names.flatMap(n => by[n].intervals)));
+
+    // Overlapping pair: 2h summed but only 1.5h of wall-clock.
+    expect(union(['a', 'b'])).toBe(90 * MIN);
+    // Disjoint pair: union equals the sum.
+    expect(union(['a', 'c'])).toBe(120 * MIN);
+    // A single project reduces to its own wall-clock.
+    expect(union(['b'])).toBe(by['b'].wallClockMs);
+    // Everything matches the report-wide figure the server computed.
+    expect(union(['a', 'b', 'c'])).toBe(report.totals.wallClockMs);
   });
 
   it('orders days ascending', async () => {

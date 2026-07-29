@@ -31,6 +31,14 @@ export interface ProjectTime {
   totalMs: number;
   /** Union across this project's sessions — the same hour counted once. */
   wallClockMs: number;
+  /**
+   * The merged intervals `wallClockMs` sums, clipped to the range.
+   *
+   * Shipped so a client can re-derive wall-clock for any *subset* of projects.
+   * Unions do not add, so a filtered wall-clock cannot be reconstructed from
+   * per-project scalars — it needs the intervals themselves.
+   */
+  intervals: Interval[];
   sessionCount: number;
   sessions: SessionSummary[];
   activeDays: number;
@@ -312,12 +320,15 @@ export async function buildTimeReport(options: TimeReportOptions): Promise<TimeR
 
     if (projectIntervals.length === 0) continue;
 
+    const mergedIntervals = mergeIntervals(projectIntervals);
+
     projects.push({
       id: projectPath,
       path: projectPath,
       name: leafName(projectPath),
       totalMs: sumDuration(projectIntervals),
-      wallClockMs: sumDuration(mergeIntervals(projectIntervals)),
+      wallClockMs: sumDuration(mergedIntervals),
+      intervals: mergedIntervals,
       sessionCount: sessionSummaries.length,
       sessions: sessionSummaries.sort((a, b) => b.activeMs - a.activeMs),
       activeDays: Object.keys(byDay).length,
