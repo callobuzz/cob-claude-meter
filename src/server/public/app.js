@@ -54,6 +54,21 @@ function fmtHM(ms) {
   return h > 0 ? `${h}h ${String(m).padStart(2, '0')}m` : `${m}m`;
 }
 
+/**
+ * The same hours and minutes as fmtHM, marked up for the big stat tiles.
+ *
+ * Decimal hours read badly at a glance — "4.89" invites the guess that it means
+ * four hours and eighty-nine minutes, and nobody converts .89 into 53 in their
+ * head. Built from numbers only, so there is nothing here to escape.
+ */
+function hmMarkup(ms) {
+  const total = Math.round(ms / 60000);
+  const h = Math.floor(total / 60);
+  const m = total % 60;
+  if (h === 0) return `${m}<span class="unit">m</span>`;
+  return `${h}<span class="unit">h</span> ${String(m).padStart(2, '0')}<span class="unit">m</span>`;
+}
+
 function fmtDate(ms) {
   if (!ms) return '—';
   return new Date(ms).toLocaleDateString(undefined, { day: '2-digit', month: 'short' });
@@ -375,14 +390,14 @@ function renderStats() {
   const days = new Set(shown.flatMap((p) => Object.keys(p.byDay))).size;
   const sessions = shown.reduce((acc, p) => acc + p.sessionCount, 0);
 
-  $('stat-total').innerHTML = `${fmtHours(totalMs)}<span class="unit">h</span>`;
+  $('stat-total').innerHTML = hmMarkup(totalMs);
   $('stat-range').textContent = filtered
     ? `${shown.length} of ${report.projects.length} projects`
     : labelFor(report.rangeLabel);
 
   $('stat-wall').innerHTML = wallMs === null
     ? `<span class="unit">unavailable</span>`
-    : `${fmtHours(wallMs)}<span class="unit">h</span>`;
+    : hmMarkup(wallMs);
   $('stat-concurrency').textContent = wallMs === null
     ? 'could not be calculated'
     : wallMs
@@ -390,7 +405,7 @@ function renderStats() {
       : 'no overlapping sessions';
 
   $('stat-days').textContent = String(days);
-  $('stat-avg').textContent = days ? `${fmtHours(totalMs / days)} h/day avg` : '—';
+  $('stat-avg').textContent = days ? `${fmtHM(totalMs / days)}/day avg` : '—';
 
   $('stat-projects').textContent = String(shown.length);
   const clientCount = new Set(shown.map((p) => p.client).filter(Boolean)).size;
@@ -822,31 +837,40 @@ function wire() {
     if (tab) setTab(tab.dataset.tab);
   });
 
+  // Anything that changes which projects are on screen has to go through
+  // renderAll, because the wall-clock union is computed server-side for exactly
+  // the visible selection. Repainting without re-fetching it leaves the summed
+  // total describing the filtered set and the wall-clock still describing the
+  // previous one — which shows up as a wall-clock larger than the summed total,
+  // and a concurrency below 1x. renderAll no-ops the fetch when the selection
+  // is genuinely unchanged, so routing through it costs nothing.
   $('search').addEventListener('input', (e) => {
     state.search = e.target.value;
     saveState();
-    renderStats(); renderProjects(); renderTimeline(); renderClients();
+    renderAll();
   });
 
   for (const [id, key] of [['filter-client', 'client'], ['filter-tag', 'tag'], ['sort', 'sort']]) {
     $(id).addEventListener('change', (e) => {
       state[key] = e.target.value;
       saveState();
-      renderStats(); renderProjects(); renderTimeline(); renderClients();
+      renderAll();
     });
   }
 
   $('show-hidden').addEventListener('change', (e) => {
     state.showHidden = e.target.checked;
     saveState();
-    renderStats(); renderProjects(); renderTimeline(); renderClients();
+    renderAll();
   });
 
   $('group-by').addEventListener('change', (e) => {
     state.groupBy = e.target.value;
     openDay = null;
     saveState();
-    renderTimeline();
+    // Bucket keys are part of the wall-clock request, so a grouping change
+    // needs a refetch too — day buckets cannot answer a month view.
+    renderAll();
   });
 
   $('panel-projects').addEventListener('click', async (e) => {
