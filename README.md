@@ -63,7 +63,8 @@ for today and for every session you have already run.
 | **Per-Model Breakdown** | See usage split across Opus, Sonnet, Haiku |
 | **Exact Cost Estimates** | Uses real cache breakdowns — no guessing |
 | **Time Ranges** | Today, this week, this month, custom ranges |
-| **Work-Hours Tracking** | Per-project hours measured from Claude Code's own recorded turn durations |
+| **Work-Hours Tracking** | Per-project hours from Claude Code's own turn durations and tool spans — subagents and background jobs included |
+| **History Outlives the Logs** | Finished days are archived, so hours survive Claude Code's 30-day log cleanup |
 | **Multi-Client Billing** | Tag projects by client, filter and roll up hours per client |
 | **Web Dashboard** | Filterable, searchable UI — run it with or without Docker |
 | **Retroactive** | Works on logs you already have — no timer, nothing to start |
@@ -162,19 +163,30 @@ no daemon runs — it works retroactively across your entire log history.
 
 ### How active time is measured
 
-Claude Code times every turn and writes the result into the transcript. Claude
-Meter reads those numbers directly, so a turn counts for exactly as long as it
-ran — a twelve-minute `npm run build` inside a turn is twelve minutes, and the
-minutes you spend reading the reply afterwards are none. Nothing is inferred,
-nothing is capped, and no threshold changes the answer.
+The working definition is the intuitive one: **you are working whenever Claude is
+doing something, or you are typing.** You are idle only when neither is true.
 
-Sessions that carry no turn records — very old ones, and anything written before
-Claude Code started timing turns — fall back to the earlier method: sum the gaps
-between consecutive log entries and **discard any gap longer than the idle
-cutoff** (5 minutes by default). That is an estimate, and it is why the cutoff
-still exists. The dashboard header labels it *(fallback)* and the footer tells
-you how many sessions came from each source, so you always know which number you
-are reading.
+Claude Code records enough to reconstruct that. Claude Meter reads three kinds of
+evidence out of each transcript and takes their union:
+
+| Evidence | What it catches |
+|---|---|
+| **Turn durations** | Claude Code times every turn and writes the result down. A twelve-minute `npm run build` inside a turn is twelve minutes — measured, not inferred. |
+| **Tool spans** | Every `tool_use` paired with its `tool_result`. This is what catches subagents and background jobs: work that keeps running *between* turns while you carry on typing. |
+| **Log activity** | Everything else the session wrote — compaction, queued prompts, entries no turn record covers. |
+
+Overlapping evidence counts once. Then the gaps: a silence shorter than the idle
+cutoff is joined up, a longer one is dropped. Bridging those gaps is the cutoff's
+only job — it cannot shorten a measured turn, and it cannot invent time that
+nothing in the log supports.
+
+Waiting on *you* is not work. `AskUserQuestion` and `ExitPlanMode` spans are
+excluded by name; on real logs one of them had sat open for eight hours.
+
+Sessions old enough to carry no turn records at all fall back to activity gaps
+alone. The dashboard header labels those *(fallback)* and the footer tells you
+how many sessions came from each source, so you always know which number you are
+reading.
 
 Two totals are reported, and they answer different questions:
 
@@ -200,9 +212,11 @@ majority of entries sit beneath, so subdirectory excursions and outliers do not
 split one project into several. Directories that resolve to the same path (after
 a folder rename) merge back together.
 
-Subagent transcripts under `<session-id>/subagents/` are deliberately ignored — a
-subagent runs *inside* its parent session, so counting them would multiply the
-same terminal.
+Subagent transcript **files** under `<session-id>/subagents/` are never opened — a
+subagent runs *inside* its parent session, so reading them as sessions would
+multiply the same terminal. The time is not lost: the parent transcript already
+brackets each subagent run with the `Agent` tool's `tool_use`/`tool_result` pair,
+so it is counted from there. Free, and it cannot double-count.
 
 ### Reading the timeline
 
@@ -253,14 +267,18 @@ they measure is *Claude working*, which is a proxy for *you working*:
   reviewing code in your editor, or the stretch between a turn finishing and
   your next prompt — however you spend it
 - **Counted:** the full length of every turn, including the long tool runs,
-  builds and test suites you sat through waiting
-- **Counted, and arguably shouldn't be:** a permission prompt you approve after
-  a delay. The turn is paused waiting for you, but Claude Code records the wait
-  as part of the turn and nothing in the log separates it from real execution.
-  Leave an approval pending over lunch and that hour lands in your total. There
-  is no honest fix for this from the outside — capping turns would throw away
-  the genuinely long builds this release exists to capture — so it is stated
-  here rather than silently corrected.
+  builds and test suites you sat through waiting — plus subagents and background
+  jobs still running between turns while you queue up the next thing
+- **Not counted, deliberately:** time an `AskUserQuestion` or plan-mode prompt
+  spent waiting for you. Those are the agent blocked on a human, and they are
+  excluded by tool name
+- **Counted, and arguably shouldn't be:** an ordinary *permission* prompt you
+  approve after a delay — approving a `Bash` command, say. The tool call is open
+  the whole time and nothing in the transcript separates "waiting for approval"
+  from "running". Leave one pending over lunch and that hour lands in your total.
+  There is no honest fix from the outside — capping tool spans would throw away
+  the genuinely long builds this exists to capture — so it is stated here rather
+  than silently corrected.
 
 For hourly billing, the honest use is as a **floor and a sanity check** — evidence
 that a project consumed roughly N hours — rather than an invoice generated
@@ -274,24 +292,41 @@ creates no data of its own, which makes it fully retroactive — and also means
 **Claude Code's own settings decide what it can ever see.** Know these before you
 rely on the numbers.
 
-#### Claude Code deletes your logs — this is the big one
+#### Claude Code deletes your logs — the archive is the answer
 
 Claude Code deletes `~/.claude/projects/<project>/<session>.jsonl` on startup
 once the file is older than **`cleanupPeriodDays`, which defaults to 30 days**.
-Consequences, stated plainly:
+Every number here is derived from those files, so history used to have a hard
+ceiling at that window — and hit it silently, the totals simply getting shorter.
 
-- **History has a hard ceiling.** On the default, "All time" means the last 30
-  days. No setting in this tool changes that.
-- **The loss is silent.** A pruned project keeps its folder (and its
-  `memory/`, `sessions-index.json`), so it stops appearing in reports rather
-  than showing zero. Nothing warns you.
-- **It is irreversible.** The per-message timestamps that active-time is derived
-  from existed only inside the deleted transcript. Nothing reconstructs them.
-- **Extending it is not retroactive.** Raising `cleanupPeriodDays` stops the next
-  sweep; it recovers nothing.
+**The dashboard now keeps its own record.** Once a day is over its hours cannot
+change, so they are computed once and written to `day-archive.ndjson` in the data
+directory. When Claude Code later deletes the transcripts, the day is served from
+there instead: same projects, same per-day breakdown, same wall-clock union
+across a filtered subset of them.
 
-Run `claude-meter retention` to see your current window, which projects have
-already been pruned, and what a longer window costs in disk and privacy. See
+What that does and does not buy you:
+
+- **From the day you install it, history stops expiring.** Load the dashboard
+  once a month and every finished day it has seen is kept, whatever Claude Code
+  does to the logs afterwards.
+- **It is not retroactive.** It can only archive days whose logs still exist when
+  it first sees them. Anything already pruned is gone for good.
+- **Recomputing never shrinks a day.** Transcripts expire one session at a time,
+  so a day at the edge of the window recomputes lower on each pass. The archive
+  refuses to write a smaller number over a larger one at the same settings —
+  otherwise it would have faithfully recorded its own erosion.
+- **Archived days are frozen at the threshold they were measured at.** Move the
+  idle cutoff and days whose logs still exist are recomputed; days that only
+  exist in the archive cannot be, so they are shown as stored and the dashboard
+  says so.
+- **It is one small file, and it is irreplaceable.** Back it up alongside
+  `tags.json` — see [What your data is worth](#what-your-data-is-worth).
+
+Raising the retention window is still worth doing, because it is what lets the
+archive fill in the first place. Run `claude-meter retention` to see your current
+window, which projects have already been pruned, and what a longer window costs
+in disk and privacy. See
 [Your logs expire](#your-logs-expire--that-limits-how-far-back-this-can-look).
 
 #### Other Claude Code settings that zero out the data
@@ -309,11 +344,15 @@ already been pruned, and what a longer window costs in disk and privacy. See
   is invisible. This measures Claude Code sessions, not your working day.
 - **This machine only.** It reads local log directories. Two laptops means two
   separate sets of numbers; there is no aggregation across machines.
-- **Subagent transcripts are excluded on purpose.** They run *inside* a parent
-  session, so counting them would multiply the same wall-clock time.
-- **The idle cutoff only moves sessions that have no turn records.** Changing it
-  leaves measured sessions untouched. It still matters for a period made mostly
-  of fallback sessions — the dashboard footer tells you that split.
+- **Subagent transcript files are excluded on purpose.** They run *inside* a
+  parent session, so reading them as sessions would multiply the same wall-clock
+  time. Their duration is counted from the parent's `Agent` tool span instead.
+- **The idle cutoff bridges gaps; it cannot shorten measured work.** Lowering it
+  drops the quiet stretches between turns, raising it keeps them. A turn or tool
+  call that Claude Code timed is counted in full at any setting.
+- **Archived days do not move with the cutoff.** Once a day's logs are gone it
+  cannot be recomputed, so it keeps the numbers it was archived with. The
+  dashboard names the count when that happens.
 - **Day boundaries follow `TZ`.** Change the timezone and evening work moves
   between days. In Docker, set `TZ` explicitly — the container is UTC otherwise.
 - **Project identity comes from the session's working directory.** Move a project
@@ -448,13 +487,14 @@ to destroy them.
 | Data | Where | Risk |
 |---|---|---|
 | Session logs | your machine, mounted **read-only** | untouched — no Docker action can harm them |
-| `tags.json` | `./meter-data/` or `~/.claude-meter/` | the only irreplaceable file — back it up |
+| `tags.json` | `./meter-data/` or `~/.claude-meter/` | irreplaceable — your clients, aliases and tags. Back it up |
+| `day-archive.ndjson` | `./meter-data/` or `~/.claude-meter/` | irreplaceable once the logs it came from expire. Back it up |
 | `timeline-cache.ndjson` | `./meter-data/` or `~/.claude-meter/` | disposable, rebuilds itself on the next scan |
 
-Back it up by copying one file:
+Back both up by copying two files:
 
 ```bash
-cp meter-data/tags.json ~/backups/claude-meter-tags.json
+cp meter-data/tags.json meter-data/day-archive.ndjson ~/backups/
 ```
 
 The keys in `tags.json` are the project paths recorded inside your logs, not the
@@ -471,9 +511,13 @@ written to.
 ### Your logs expire — that limits how far back this can look
 
 Claude Code deletes session files older than `cleanupPeriodDays` (**default 30
-days**) at startup. This tool derives every number from those files, so once they
-are gone the hours are gone with them — "All time" can only reach as far back as
-your retention window.
+days**) at startup. Every number here is derived from those files.
+
+The dashboard keeps a durable record of every finished day it has already seen
+(`day-archive.ndjson`), so days that pass through it survive the deletion. But it
+can only archive what it read while the logs were still there — **a longer
+retention window is what gives it something to archive**, and it is the only
+thing that reaches backwards at all.
 
 If you bill from these numbers, raise it before you need it:
 
@@ -502,8 +546,10 @@ Equivalent manual edit in `~/.claude/settings.json`:
 
 Extending retention never recovers anything already deleted — it only stops the
 next sweep. A pruned project leaves its directory behind with a
-`sessions-index.json` but no `.jsonl` transcripts, so it silently drops out of
-the report rather than showing zero. `claude-meter doctor` flags this too.
+`sessions-index.json` but no `.jsonl` transcripts, so it used to drop silently
+out of the report rather than showing zero; if the dashboard had already archived
+those days it now keeps showing them, and the footer says how many came from the
+archive. `claude-meter doctor` flags the pruning either way.
 
 ### Performance
 
@@ -519,9 +565,15 @@ request down with it. If a write does fail now the report still renders and you
 get a warning saying the next load will be slower. A `timeline-cache.json` left
 over from an older version is read once and then deleted.
 
-Entries measured from turn records survive a change to the idle cutoff, since
-the cutoff cannot affect them — switching it is close to instant instead of
-forcing a full rescan.
+Changing the idle cutoff invalidates the cache, because the cutoff now decides
+which gaps between measured turns get bridged — so the answer really does move,
+and serving the previous setting's numbers would be worse than rescanning.
+
+Finished days are written to `day-archive.ndjson`, the same append-and-compact
+format. Roughly 250 bytes per project-day: two weeks of heavy multi-project work
+is about 12 KB, a decade is single-digit megabytes. It is read on every report
+and only written when a day's numbers actually change, so the steady state costs
+nothing.
 
 Reads retry with backoff before giving up on a file. Under sustained pressure a
 bind mount will refuse a read that succeeds moments later, and a session dropped
@@ -542,11 +594,13 @@ number of turns you have ever run.
 | "No log directories found" | Set `CLAUDE_LOGS_DIR` (Docker) or `claude-meter config --set logPaths='["/path"]'` |
 | Page hangs instead of loading | An IPv6 relay is swallowing the connection. Make sure the port is published as `0.0.0.0:4317:4317`, not `4317:4317`, then `docker compose up -d` |
 | Hours look too high | Read wall-clock instead of summed if you run several terminals at once. A permission prompt left waiting also counts — see [How accurate is it?](#how-accurate-is-it) |
-| Hours look too low | Check the dashboard footer. If most sessions are *estimated from activity gaps*, raise the idle cutoff; if they are *measured from recorded turn times*, the cutoff changes nothing |
-| Changing the idle cutoff does nothing | Expected for measured sessions — it only applies to the fallback ones |
+| Hours look too low | Raise the idle cutoff — it decides which quiet stretches between turns are bridged. If the footer says most sessions are *estimated from activity gaps*, it matters more still |
+| Changing the cutoff moves the total less than expected | Expected. Turns and tool calls that Claude Code timed are counted in full at any setting; only the gaps between them move |
+| Toast about days measured at another threshold | Those days exist only in the archive and cannot be recomputed — the cutoff no longer applies to them |
 | Toast says logs were skipped | One or more logs were unreadable and totals are incomplete — check `docker compose logs` |
-| Projects missing from "All time" | Claude Code deleted their transcripts — run `claude-meter retention` to see which, and to extend the window |
-| "All time" only reaches back a month | Same cause: `cleanupPeriodDays` defaults to 30 days |
+| Projects missing from "All time" | Claude Code deleted their transcripts before the dashboard ever saw them — run `claude-meter retention` to see which, and to extend the window |
+| "All time" only reaches back a month | `cleanupPeriodDays` defaults to 30 days. Days seen since you installed this are kept in `day-archive.ndjson` regardless; earlier ones were never archived |
+| Footer says days were restored from the archive | Working as intended — those days' logs are gone and the hours came from the durable record |
 
 ---
 

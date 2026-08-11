@@ -355,6 +355,7 @@
     font-size: 0.95rem; font-weight: 600; margin-bottom: 0.4rem; color: var(--text-primary);
   }
   .callout p { font-size: 0.85rem; color: var(--text-secondary); line-height: 1.6; }
+  .callout p + p { margin-top: 0.7rem; }
   .callout code {
     font-family: var(--font-mono); font-size: 0.8rem;
     color: var(--jade-lift); background: var(--surface-2);
@@ -507,11 +508,12 @@
 
 <!-- Work hours dashboard -->
 <section class="section">
-  <span class="eyebrow">New in 0.5</span>
+  <span class="eyebrow">New in 0.6</span>
   <h2>Your Work Hours, <span class="accent">Measured Not Guessed</span></h2>
   <p class="lede">
-    Claude Code times every turn and writes the result into your transcript. Claude Meter reads those
-    numbers straight out and adds them up. No timers to start, nothing to remember, no clocking in. Run
+    Claude Code times every turn, brackets every tool call, and writes all of it into your transcript.
+    Claude Meter reads those numbers straight out and takes their union. No timers to start, nothing to
+    remember, no clocking in. Run
     <code style="font-family: var(--font-mono); color: var(--jade-lift);">claude-meter serve</code>
     and open it in your browser.
   </p>
@@ -527,12 +529,12 @@
       <div class="kpi-row">
         <div class="kpi">
           <div class="label">Summed</div>
-          <div class="value jade">211.3h</div>
+          <div class="value jade">211h 18m</div>
           <div class="sub">across sessions</div>
         </div>
         <div class="kpi">
           <div class="label">Wall-clock</div>
-          <div class="value iolite">168.4h</div>
+          <div class="value iolite">168h 24m</div>
           <div class="sub">overlap merged</div>
         </div>
         <div class="kpi">
@@ -543,7 +545,7 @@
         <div class="kpi">
           <div class="label">Active days</div>
           <div class="value">33</div>
-          <div class="sub">6.4h avg</div>
+          <div class="sub">6h 24m/day avg</div>
         </div>
       </div>
 
@@ -609,55 +611,117 @@
 
 <!-- How the hours are measured -->
 <section class="section">
-  <span class="eyebrow">What changed in 0.5</span>
-  <h2>A Twelve-Minute Build Is <span class="accent">Twelve Minutes</span></h2>
+  <span class="eyebrow">What changed in 0.6</span>
+  <h2>Idle Means <span class="accent">Nothing Is Running</span></h2>
   <p class="problem-lede">
-    Earlier versions had no measured duration to work from, so they inferred one: sum the gaps between
-    log entries and throw away anything longer than an idle cutoff. That got both halves wrong.
-    A long build looked exactly like a coffee break and was discarded &mdash; while the minutes you
-    spent reading a reply counted as work, as long as you answered quickly enough.
+    0.5 read the duration Claude Code records for each turn, which fixed the twelve-minute build that
+    older versions threw away as idle. But a turn is not the only thing that runs. Spawn a subagent,
+    kick off a background job, and the work continues <em>between</em> turns &mdash; while you keep
+    typing. None of it was counted.
   </p>
 
   <div class="problem">
     <div class="compare">
       <div class="compare-card unknown">
-        <div class="who">Before &mdash; inferred</div>
-        <div class="amount">~5 min</div>
+        <div class="who">Before &mdash; turns only</div>
+        <div class="amount">1h 46m</div>
         <p class="note">
-          A turn that spent twelve minutes inside one <code style="font-family: var(--font-mono);">npm run build</code>
-          left a twelve-minute silence in the log. Over the cutoff, so it was dropped as idle.
-          Your longest work vanished first.
+          Four subagents running in parallel for forty minutes sat outside every turn record, so they
+          were worth nothing. Across two months of real logs, 5% of everything the agent did fell
+          into that gap &mdash; about eighteen hours.
         </p>
       </div>
       <div class="compare-vs">VS</div>
       <div class="compare-card">
-        <div class="who">Now &mdash; measured</div>
-        <div class="amount est">12 min</div>
+        <div class="who">Now &mdash; the union</div>
+        <div class="amount est">3h 04m</div>
         <p class="note">
-          Claude Code recorded how long that turn took. Claude Meter reads the number.
-          No threshold, no cap, no inference &mdash; and the time between turns, spent however
-          you spend it, counts as nothing.
+          Turn durations, tool spans and log activity, merged onto one timeline. Overlap counts once.
+          71,870 tool calls in those logs, every one matched to its result &mdash; nothing guessed.
         </p>
       </div>
     </div>
 
     <div class="verdict">
-      <span class="big">The idle cutoff is now a fallback.</span>
+      <span class="big">The idle cutoff has exactly one job now.</span>
       <span class="small">
-        Sessions carrying turn records ignore it entirely. Only transcripts written before Claude Code
-        started timing turns fall back to the old estimate &mdash; and the dashboard footer tells you
-        exactly how many of each you are looking at.
+        It bridges the silences. Shorter than the cutoff, the gap is joined up; longer, it is dropped.
+        It cannot shorten a turn Claude Code timed and it cannot invent time nothing supports &mdash;
+        so moving it changes the answer in the one way you would expect it to.
       </span>
     </div>
 
     <div class="callout" style="margin-top: 1.5rem;">
-      <h3>One thing it still gets wrong, and we are not going to hide it</h3>
+      <h3>Waiting on you is not work &mdash; and one case still slips through</h3>
       <p>
-        A permission prompt you approve after a delay sits <em>inside</em> the recorded turn. The turn is
-        paused waiting for you, but nothing in the log separates that wait from real execution. Leave an
-        approval pending over lunch and the hour lands in your total. Capping turns would fix it by
-        throwing away the genuinely long builds this release exists to capture, so the honest move is to
-        tell you rather than quietly correct it.
+        <code style="font-family: var(--font-mono);">AskUserQuestion</code> and plan-mode prompts are the
+        agent blocked on a human, so they are excluded by name. One of them in our own logs had been
+        sitting open for eight hours.
+      </p>
+      <p>
+        What is left is the ordinary permission prompt &mdash; approving a
+        <code style="font-family: var(--font-mono);">Bash</code> command. That tool call is open the whole
+        time it waits, and nothing in the transcript separates waiting from running. Leave one pending
+        over lunch and the hour lands in your total. Capping tool spans would fix it by throwing away the
+        genuinely long builds this exists to capture, so the honest move is to tell you rather than
+        quietly correct it.
+      </p>
+    </div>
+  </div>
+</section>
+
+<!-- The archive -->
+<section class="section">
+  <span class="eyebrow">Also new in 0.6</span>
+  <h2>Claude Code Deletes Your Logs.<br><span class="accent">Now Your Hours Survive It.</span></h2>
+  <p class="problem-lede">
+    Claude Code prunes session transcripts once they pass
+    <code style="font-family: var(--font-mono);">cleanupPeriodDays</code> &mdash; thirty days by default.
+    Every hour this tool reports comes out of those files, so history had a hard ceiling at that window
+    and hit it silently. Last quarter did not look wrong. It looked empty.
+  </p>
+
+  <div class="problem">
+    <div class="compare">
+      <div class="compare-card unknown">
+        <div class="who">Before</div>
+        <div class="amount">30 days</div>
+        <p class="note">
+          &ldquo;All time&rdquo; meant the last month. A pruned project kept its folder, so it stopped
+          appearing rather than showing zero &mdash; and nothing told you it had gone.
+        </p>
+      </div>
+      <div class="compare-vs">VS</div>
+      <div class="compare-card">
+        <div class="who">Now</div>
+        <div class="amount est">Kept</div>
+        <p class="note">
+          A finished day cannot change, so it is computed once and written down. When the transcripts
+          go, the day is served from the archive instead &mdash; same projects, same daily breakdown,
+          same exact wall-clock union under any filter.
+        </p>
+      </div>
+    </div>
+
+    <div class="verdict">
+      <span class="big">Roughly 250 bytes per project-day.</span>
+      <span class="small">
+        Two weeks of heavy multi-project work is about 12 KB; a decade is single-digit megabytes.
+        It is read on every report and written only when a day's numbers actually move.
+      </span>
+    </div>
+
+    <div class="callout" style="margin-top: 1.5rem;">
+      <h3>What it will not do</h3>
+      <p>
+        It is not retroactive. It can only keep days whose logs still existed the first time it saw them,
+        so anything Claude Code already deleted is gone for good &mdash; raise
+        <code style="font-family: var(--font-mono);">cleanupPeriodDays</code> before you need it.
+      </p>
+      <p>
+        And it never overwrites a bigger number with a smaller one. Transcripts expire one session at a
+        time, so a day at the edge of the window recomputes lower on every pass; without that rule the
+        archive would have carefully recorded its own erosion.
       </p>
     </div>
   </div>
@@ -726,11 +790,11 @@
   <div class="callout">
     <h3>Read this before you trust a long report</h3>
     <p>
-      Claude Code deletes session logs older than <strong>30 days</strong> by default, so
-      &ldquo;all time&rdquo; really means &ldquo;as far back as your logs survive.&rdquo; Claude Meter
-      derives everything from those files &mdash; it cannot recover what has been pruned.
-      Run <code>claude-meter retention</code> to see what you have already lost and to extend the window
-      before it costs you more.
+      Claude Code deletes session logs older than <strong>30 days</strong> by default. From 0.6 the
+      dashboard archives every finished day it sees, so &ldquo;all time&rdquo; keeps growing from the
+      day you install it &mdash; but nothing recovers what was pruned before that.
+      Run <code>claude-meter retention</code> to see what you have already lost and to widen the window,
+      which is what gives the archive something to keep.
     </p>
   </div>
 </section>
@@ -767,7 +831,12 @@
     <div class="feature-card">
       <span class="icon">&#9201;</span>
       <h3>Work-Hours Tracking</h3>
-      <p>Hours built from the turn durations Claude Code records itself. Long builds count in full; the time between turns does not count at all.</p>
+      <p>Hours built from the turn durations and tool spans Claude Code records itself. Long builds, subagents and background jobs all count in full.</p>
+    </div>
+    <div class="feature-card">
+      <span class="icon">&#128451;</span>
+      <h3>History Outlives The Logs</h3>
+      <p>Claude Code deletes transcripts after 30 days. Finished days are archived first, so your hours stay put when the logs go.</p>
     </div>
     <div class="feature-card">
       <span class="icon">&#128202;</span>
