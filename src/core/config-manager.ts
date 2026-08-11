@@ -26,6 +26,9 @@ export interface AppConfig {
   formatting: FormattingConfig;
 }
 
+/** Key names that reach the prototype chain instead of the object itself. */
+const UNSAFE_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
+
 const DEFAULT_CONFIG: AppConfig = {
   logPaths: [],
   defaultCommand: 'this-month',
@@ -82,14 +85,30 @@ export class ConfigManager {
   }
 
   set(key: string, value: unknown): void {
-    const config = this.load() as unknown as Record<string, unknown>;
     const parts = key.split('.');
+
+    // `config --set` walks a dotted path and creates the objects it needs on the
+    // way down. Left unguarded that is a prototype-pollution primitive: setting
+    // `__proto__.isAdmin` would write onto Object.prototype and change every
+    // object in the process, not just this config. No real config key is ever
+    // called any of these, so refusing outright costs nothing.
+    const unsafe = parts.find((part) => UNSAFE_KEYS.has(part));
+    if (unsafe) {
+      throw new Error(`Refusing to set "${key}": "${unsafe}" would modify the object prototype`);
+    }
+
+    const config = this.load() as unknown as Record<string, unknown>;
     let current = config;
     for (let i = 0; i < parts.length - 1; i++) {
-      if (typeof current[parts[i]] !== 'object' || current[parts[i]] === null) {
-        current[parts[i]] = {};
+      const part = parts[i];
+      if (
+        !Object.prototype.hasOwnProperty.call(current, part) ||
+        typeof current[part] !== 'object' ||
+        current[part] === null
+      ) {
+        current[part] = {};
       }
-      current = current[parts[i]] as Record<string, unknown>;
+      current = current[part] as Record<string, unknown>;
     }
     current[parts[parts.length - 1]] = value;
     this.write(config);

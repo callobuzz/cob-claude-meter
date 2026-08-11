@@ -27,7 +27,7 @@ function readJsonFile(path: string): Record<string, unknown> {
   }
 }
 
-function createUnixWrapper(originalCommand: string, wrapperPath: string): void {
+export function createUnixWrapper(originalCommand: string, wrapperPath: string): void {
   const script = `#!/bin/bash
 INPUT=$(cat)
 LINE1=$(echo "$INPUT" | ${originalCommand})
@@ -38,10 +38,15 @@ echo "$LINE2"
   writeFileSync(wrapperPath, script, { mode: 0o755 });
 }
 
-function createWindowsWrapper(originalCommand: string, wrapperPath: string): void {
+export function createWindowsWrapper(originalCommand: string, wrapperPath: string): void {
+  // JSON.stringify, not hand-rolled quote escaping. The generated file is
+  // JavaScript, and a JSON string literal is a valid JS one — so backslashes,
+  // quotes, newlines and control characters all come out correct. Escaping only
+  // `'` left a Windows path ending in a backslash (`C:\tools\`) escaping its own
+  // closing quote and producing a wrapper that will not parse.
   const script = `const { execSync } = require('child_process');
 const input = require('fs').readFileSync(0, 'utf-8');
-const line1 = execSync('${originalCommand.replace(/'/g, "\\'")}', { input, encoding: 'utf-8' }).trim();
+const line1 = execSync(${JSON.stringify(originalCommand)}, { input, encoding: 'utf-8' }).trim();
 const line2 = execSync('claude-meter statusline --mode add --no-color', { input, encoding: 'utf-8' }).trim();
 console.log(line1);
 console.log(line2);

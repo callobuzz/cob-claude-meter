@@ -62,4 +62,30 @@ describe('ConfigManager', () => {
   it('getConfigDir returns the config directory', () => {
     expect(cm.getConfigDir()).toBe(tempDir);
   });
+
+  describe('prototype pollution', () => {
+    // `config --set` takes a dotted path from the command line and creates the
+    // objects it walks through. Without a guard these keys write onto
+    // Object.prototype and every object in the process inherits the change.
+    for (const key of ['__proto__.polluted', 'constructor.prototype.polluted', 'a.prototype.polluted']) {
+      it(`refuses to set "${key}"`, () => {
+        expect(() => cm.set(key, 'yes')).toThrow(/prototype/i);
+      });
+    }
+
+    it('leaves Object.prototype untouched after a rejected set', () => {
+      try {
+        cm.set('__proto__.polluted', 'yes');
+      } catch {
+        // expected
+      }
+      expect(({} as Record<string, unknown>).polluted).toBeUndefined();
+      expect(Object.prototype.hasOwnProperty.call(Object.prototype, 'polluted')).toBe(false);
+    });
+
+    it('still sets ordinary nested keys', () => {
+      cm.set('statusline.refreshCache', 60);
+      expect(cm.load().statusline.refreshCache).toBe(60);
+    });
+  });
 });

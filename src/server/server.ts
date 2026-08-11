@@ -28,6 +28,21 @@ function defaultPublicDir(): string {
   return join(here, 'public');
 }
 
+/**
+ * An error whose message is safe to hand back to the caller.
+ *
+ * Everything else that escapes a handler is treated as a bug in this server,
+ * and a bug's message describes our internals — file paths, library frames, the
+ * shape of the code. That belongs in the operator's terminal, not in an HTTP
+ * response, so only these are echoed.
+ */
+class ClientError extends Error {
+  constructor(readonly status: number, message: string) {
+    super(message);
+    this.name = 'ClientError';
+  }
+}
+
 function readBody(req: IncomingMessage): Promise<unknown> {
   return new Promise((resolvePromise, reject) => {
     const chunks: Buffer[] = [];
@@ -36,7 +51,7 @@ function readBody(req: IncomingMessage): Promise<unknown> {
     req.on('data', (chunk: Buffer) => {
       size += chunk.length;
       if (size > MAX_BODY_BYTES) {
-        reject(new Error('Request body too large'));
+        reject(new ClientError(413, 'Request body too large'));
         req.destroy();
         return;
       }
@@ -48,11 +63,11 @@ function readBody(req: IncomingMessage): Promise<unknown> {
       try {
         resolvePromise(JSON.parse(Buffer.concat(chunks).toString('utf-8')));
       } catch {
-        reject(new Error('Invalid JSON body'));
+        reject(new ClientError(400, 'Invalid JSON body'));
       }
     });
 
-    req.on('error', reject);
+    req.on('error', () => reject(new ClientError(400, 'Request stream failed')));
   });
 }
 
@@ -111,8 +126,15 @@ export function createDashboardServer(options: ServerOptions) {
 
       serveStatic(res, publicDir, url.pathname);
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      sendJson(res, 500, { error: message });
+      if (err instanceof ClientError) {
+        sendJson(res, err.status, { error: err.message });
+        return;
+      }
+
+      // Log it where the operator can see it; tell the caller nothing beyond
+      // the fact that it failed.
+      console.error(`[claude-meter] ${method} ${url.pathname} failed:`, err);
+      sendJson(res, 500, { error: 'Internal server error' });
     }
   });
 }

@@ -308,3 +308,38 @@ describe('project metadata round-trip', () => {
     expect(after.body.clients).toContain('Acme');
   });
 });
+
+describe('error responses', () => {
+  /** Posts a raw body, bypassing JSON.stringify, so malformed input reaches the server. */
+  async function postRaw(path: string, body: string): Promise<{ status: number; text: string }> {
+    const res = await fetch(`${baseUrl}${path}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body,
+    });
+    return { status: res.status, text: await res.text() };
+  }
+
+  it('rejects a malformed body with 400 and a safe message', async () => {
+    const res = await postRaw('/api/project-meta', '{not json');
+    expect(res.status).toBe(400);
+    expect(JSON.parse(res.text).error).toBe('Invalid JSON body');
+  });
+
+  it('never leaks internals in an error body', async () => {
+    // Every error the server can be provoked into returning, checked for the
+    // fingerprints of a stack trace: our file paths, node internals, frames.
+    const responses = [
+      await postRaw('/api/project-meta', '{not json'),
+      await postRaw('/api/project-meta', JSON.stringify({ path: null })),
+      await postRaw('/api/wallclock', '<<<'),
+      { status: 0, text: (await get('/api/nope')).body?.error ?? '' },
+    ];
+
+    for (const res of responses) {
+      expect(res.text).not.toMatch(/at [A-Za-z]+ \(|node:internal|\.ts:\d+|\.js:\d+/);
+      expect(res.text.toLowerCase()).not.toContain('claude-meter\src');
+      expect(res.text.toLowerCase()).not.toContain('/src/server/');
+    }
+  });
+});

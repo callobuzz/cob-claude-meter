@@ -27,6 +27,17 @@ const esc = (value) =>
   String(value ?? '').replace(/[&<>"']/g, (c) =>
     ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
+/** One labelled tooltip line. Returns the row plus the span to write into. */
+function tooltipRow(label) {
+  const row = document.createElement('div');
+  row.className = 'tt-row';
+  const name = document.createElement('span');
+  name.textContent = label;
+  const value = document.createElement('span');
+  row.append(name, value);
+  return { row, value };
+}
+
 const hours = (ms) => ms / 3600000;
 
 function fmtHours(ms) {
@@ -215,10 +226,41 @@ function saveState() {
   } catch { /* private mode — filters just won't persist */ }
 }
 
+/**
+ * What each stored key is allowed to be.
+ *
+ * Anything with a fixed set of options is checked against that set, because
+ * several of them end up inside markup. localStorage is editable by anything
+ * that can run script on this origin, so restoring it with a blind
+ * Object.assign let a stored value become HTML on the next render. Free-text
+ * fields stay free text — they are escaped where they are used.
+ */
+const STATE_SHAPE = {
+  range: (v) => typeof v === 'string' && /^[a-z0-9-]{1,20}$/.test(v),
+  customStart: (v) => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v),
+  customEnd: (v) => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v),
+  idle: (v) => Number.isFinite(v) && v >= 30 && v <= 3600,
+  tab: (v) => ['projects', 'timeline', 'clients'].includes(v),
+  search: (v) => typeof v === 'string',
+  client: (v) => typeof v === 'string',
+  tag: (v) => typeof v === 'string',
+  sort: (v) => typeof v === 'string' && /^[a-z-]{1,20}$/.test(v),
+  showHidden: (v) => typeof v === 'boolean',
+  groupBy: (v) => ['day', 'week', 'month'].includes(v),
+};
+
 function restoreState() {
   try {
     const raw = localStorage.getItem(STORE_KEY);
-    if (raw) Object.assign(state, JSON.parse(raw));
+    if (!raw) return;
+    const stored = JSON.parse(raw);
+    if (!stored || typeof stored !== 'object') return;
+
+    for (const [key, isValid] of Object.entries(STATE_SHAPE)) {
+      if (Object.prototype.hasOwnProperty.call(stored, key) && isValid(stored[key])) {
+        state[key] = stored[key];
+      }
+    }
   } catch { /* ignore */ }
 }
 
@@ -631,7 +673,7 @@ function renderTimeline() {
 
     return main + `<tr class="detail"><td colspan="5"><div class="detail-inner">
       <div class="detail-full">
-        <span class="field-label">Projects in this ${state.groupBy}</span>
+        <span class="field-label">Projects in this ${esc(state.groupBy)}</span>
         <ul class="day-projects">${inner}</ul>
       </div>
     </div></td></tr>`;
@@ -858,15 +900,26 @@ function wire() {
   });
 
   // Hover layer for the timeline bars.
+  //
+  // The tooltip is built once as real elements and only its text nodes change
+  // after that. It reads its content back out of a data attribute, and text
+  // taken from the DOM and handed to innerHTML is parsed as markup — so the
+  // whole category of mistake is removed by never producing markup here,
+  // rather than by remembering to escape correctly every time.
   const tip = $('tooltip');
+  const tipTitle = document.createElement('div');
+  tipTitle.className = 'tt-title';
+  const tipHours = tooltipRow('Hours');
+  const tipProjects = tooltipRow('Projects');
+  tip.replaceChildren(tipTitle, tipHours.row, tipProjects.row);
+
   document.addEventListener('mousemove', (e) => {
     const track = e.target.closest('.bar-track[data-tip]');
     if (!track) { tip.hidden = true; return; }
     const [day, hrs, count] = track.dataset.tip.split('|');
-    tip.innerHTML =
-      `<div class="tt-title">${esc(day)}</div>` +
-      `<div class="tt-row"><span>Hours</span><span>${esc(hrs)}</span></div>` +
-      `<div class="tt-row"><span>Projects</span><span>${esc(count)}</span></div>`;
+    tipTitle.textContent = day;
+    tipHours.value.textContent = hrs;
+    tipProjects.value.textContent = count;
     tip.hidden = false;
     const pad = 14;
     const x = Math.min(e.clientX + pad, window.innerWidth - tip.offsetWidth - pad);
