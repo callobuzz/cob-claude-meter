@@ -508,7 +508,7 @@
 
 <!-- Work hours dashboard -->
 <section class="section">
-  <span class="eyebrow">New in 0.6</span>
+  <span class="eyebrow">Work hours</span>
   <h2>Your Work Hours, <span class="accent">Measured Not Guessed</span></h2>
   <p class="lede">
     Claude Code times every turn, brackets every tool call, and writes all of it into your transcript.
@@ -611,7 +611,7 @@
 
 <!-- How the hours are measured -->
 <section class="section">
-  <span class="eyebrow">What changed in 0.6</span>
+  <span class="eyebrow">Idle time</span>
   <h2>Idle Means <span class="accent">Nothing Is Running</span></h2>
   <p class="problem-lede">
     0.5 read the duration Claude Code records for each turn, which fixed the twelve-minute build that
@@ -678,7 +678,7 @@
 
 <!-- The archive -->
 <section class="section">
-  <span class="eyebrow">Also new in 0.6</span>
+  <span class="eyebrow">The archive</span>
   <h2>Claude Code Deletes Your Logs.<br><span class="accent">Now Your Hours Survive It.</span></h2>
   <p class="problem-lede">
     Claude Code prunes session transcripts once they pass
@@ -730,6 +730,123 @@
         archive would have carefully recorded its own erosion.
       </p>
     </div>
+  </div>
+</section>
+
+<!-- Tokens and cost -->
+<section class="section">
+  <span class="eyebrow">New in 0.7</span>
+  <h2>You Knew What You Spent.<br><span class="accent">Now You Know Who Spent It.</span></h2>
+  <p class="problem-lede">
+    The CLI has always totalled your tokens and priced them. What it could not say is which project
+    the money went to &mdash; the log line that carries the usage also carries the working directory,
+    and nothing was reading it. Now it is, and the dashboard has a fourth tab.
+  </p>
+
+  <div class="browser">
+    <div class="browser-bar">
+      <span class="terminal-dot red"></span>
+      <span class="terminal-dot yellow"></span>
+      <span class="terminal-dot green"></span>
+      <span class="browser-url">127.0.0.1:4317 &mdash; Tokens &amp; cost</span>
+    </div>
+    <div class="dash">
+      <div class="kpi-row">
+        <div class="kpi">
+          <div class="label">Estimated cost</div>
+          <div class="value jade">$6,692.70</div>
+          <div class="sub">this month</div>
+        </div>
+        <div class="kpi">
+          <div class="label">Fresh tokens</div>
+          <div class="value iolite">35.2M</div>
+          <div class="sub">in + out</div>
+        </div>
+        <div class="kpi">
+          <div class="label">With cache</div>
+          <div class="value">9.64B</div>
+          <div class="sub">what you are billed on</div>
+        </div>
+        <div class="kpi">
+          <div class="label">Per active day</div>
+          <div class="value">$668.82</div>
+          <div class="sub">over 10 active days</div>
+        </div>
+      </div>
+
+      <p class="panel-title">Cost by project</p>
+      <div class="proj-row">
+        <div class="proj-name">cob-pulse<span class="proj-client">Austin</span></div>
+        <div class="bar-track"><div class="bar-fill" style="width: 100%;"></div></div>
+        <div class="proj-hours">$2,302</div>
+      </div>
+      <div class="proj-row">
+        <div class="proj-name">cob-assist-saas<span class="proj-client">COB</span></div>
+        <div class="bar-track"><div class="bar-fill" style="width: 92%;"></div></div>
+        <div class="proj-hours">$2,122</div>
+      </div>
+      <div class="proj-row">
+        <div class="proj-name">cob-causeops<span class="proj-client">COBCOM</span></div>
+        <div class="bar-track"><div class="bar-fill" style="width: 33%;"></div></div>
+        <div class="proj-hours">$770</div>
+      </div>
+      <div class="proj-row">
+        <div class="proj-name">game-designer</div>
+        <div class="bar-track"><div class="bar-fill" style="width: 18%;"></div></div>
+        <div class="proj-hours">$425</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="features-grid" style="margin-top: 1.6rem;">
+    <div class="feature-card">
+      <span class="icon">&#128202;</span>
+      <h3>Day, week or month</h3>
+      <p>
+        The same grouping the timeline uses, applied to spend. See the day a refactor cost you
+        four hundred dollars, or roll the quarter up by month.
+      </p>
+    </div>
+    <div class="feature-card">
+      <span class="icon">&#128101;</span>
+      <h3>Already tagged</h3>
+      <p>
+        Hours and cost resolve projects identically, so the clients you assigned once govern both
+        tabs. Nothing to re-tag, and the two views cannot disagree about whose work it was.
+      </p>
+    </div>
+    <div class="feature-card">
+      <span class="icon">&#129302;</span>
+      <h3>Subagents counted</h3>
+      <p>
+        A subagent spends its own budget on top of its parent's. Hours deliberately ignore them;
+        cost must not. On an agent-heavy log directory that is most of the bill.
+      </p>
+    </div>
+  </div>
+
+  <div class="callout" style="margin-top: 1.5rem;">
+    <h3>Fresh tokens and billed tokens are not the same number</h3>
+    <p>
+      Input plus output is what the conversation generated. Add cache reads and writes and you get
+      what you are actually charged for &mdash; on a long agentic session, hundreds of times larger.
+      Both are shown, always, because reporting only the first understates the bill by orders of magnitude.
+    </p>
+    <p>
+      The cost itself is an estimate from a bundled price table, not your invoice. Any model the table
+      does not know is priced at flagship rates and labelled as a guess. A guessed price should never
+      look like a measured one.
+    </p>
+  </div>
+
+  <div class="verdict" style="margin-top: 1.5rem;">
+    <span class="big">One slow scan, then every range is instant.</span>
+    <span class="small">
+      Narrowing the date range never made the scan cheaper &mdash; every line of every log gets read either
+      way. So the per-day, per-model breakdown is cached per file instead, and switching from today to
+      all-time costs nothing. Spend is archived alongside hours, as raw token counts rather than dollars,
+      so a price correction reaches your history too.
+    </span>
   </div>
 </section>
 

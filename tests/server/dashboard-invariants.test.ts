@@ -116,6 +116,57 @@ describe('dashboard wall-clock invariants', () => {
   });
 });
 
+describe('dashboard tab wiring', () => {
+  /** The tab names STATE_SHAPE will restore from localStorage. */
+  function allowedTabs(): string[] {
+    const line = APP_JS.split('\n').find((l) => /^\s*tab:\s*\(v\)/.test(l));
+    if (!line) throw new Error('no tab validator found in STATE_SHAPE');
+    return [...line.matchAll(/'([a-z]+)'/g)].map((m) => m[1]);
+  }
+
+  function setTabBody(): string {
+    const start = APP_JS.indexOf('function setTab(');
+    return APP_JS.slice(start, APP_JS.indexOf('\nfunction ', start + 1));
+  }
+
+  /**
+   * A tab STATE_SHAPE accepts but setTab cannot show is a blank page on reload:
+   * the stored value restores, no panel is revealed, and nothing errors.
+   */
+  it('shows a panel for every tab it will restore', () => {
+    const tabs = allowedTabs();
+    expect(tabs.length).toBeGreaterThanOrEqual(4);
+
+    const body = setTabBody();
+    for (const tab of tabs) {
+      expect(body).toContain(`panel-${tab}`);
+    }
+  });
+
+  it('offers every restorable tab as a button', () => {
+    const html = readFileSync(join(process.cwd(), 'src/server/public/index.html'), 'utf-8');
+    for (const tab of allowedTabs()) {
+      expect(html).toContain(`data-tab="${tab}"`);
+    }
+  });
+
+  /**
+   * "Untagged" is a sentinel, not a client name. A filter that compares it as
+   * an ordinary string matches nothing and silently empties the view — which is
+   * exactly what it did on the tokens tab before this test existed.
+   */
+  it('reads the untagged-client sentinel in every project filter', () => {
+    const filters = ['function visibleProjects()', 'function visibleTokenProjects()'];
+
+    for (const signature of filters) {
+      const start = APP_JS.indexOf(signature);
+      expect(start).toBeGreaterThan(-1);
+      const body = APP_JS.slice(start, APP_JS.indexOf('\nfunction ', start + 1));
+      expect(body).toContain('__none__');
+    }
+  });
+});
+
 describe('dashboard duration formatting', () => {
   /** Decimal hours on the headline tiles read as "4 hours 89 minutes". */
   it('shows the headline totals as hours and minutes, not decimal hours', () => {

@@ -90,7 +90,36 @@
   <button class="tab is-active" data-tab="projects">Projects</button>
   <button class="tab" data-tab="timeline">Timeline</button>
   <button class="tab" data-tab="clients">Clients</button>
+  <button class="tab" data-tab="tokens">Tokens &amp; cost</button>
 </nav>
+
+<section class="stats" id="token-stats" aria-label="Token summary" hidden>
+  <article class="stat stat-hero">
+    <p class="stat-label">Estimated cost <span class="stat-note">USD</span></p>
+    <p class="stat-value" id="tstat-cost">&mdash;</p>
+    <p class="stat-foot" id="tstat-range">&nbsp;</p>
+  </article>
+  <article class="stat">
+    <p class="stat-label">Fresh tokens <span class="stat-note">in + out</span></p>
+    <p class="stat-value stat-alt" id="tstat-fresh">&mdash;</p>
+    <p class="stat-foot" id="tstat-io">&nbsp;</p>
+  </article>
+  <article class="stat">
+    <p class="stat-label">With cache <span class="stat-note">billed</span></p>
+    <p class="stat-value" id="tstat-full">&mdash;</p>
+    <p class="stat-foot" id="tstat-cache">&nbsp;</p>
+  </article>
+  <article class="stat">
+    <p class="stat-label">Per active day</p>
+    <p class="stat-value" id="tstat-perday">&mdash;</p>
+    <p class="stat-foot" id="tstat-days">&nbsp;</p>
+  </article>
+  <article class="stat">
+    <p class="stat-label">Projects</p>
+    <p class="stat-value" id="tstat-projects">&mdash;</p>
+    <p class="stat-foot" id="tstat-models">&nbsp;</p>
+  </article>
+</section>
 
 <section class="toolbar" id="toolbar">
   <label class="field field-grow">
@@ -133,6 +162,7 @@
   <div id="panel-projects" class="panel"></div>
   <div id="panel-timeline" class="panel" hidden></div>
   <div id="panel-clients" class="panel" hidden></div>
+  <div id="panel-tokens" class="panel" hidden></div>
 </main>
 
 <div id="loading" class="loading" hidden>

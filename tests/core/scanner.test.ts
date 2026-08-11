@@ -1,4 +1,6 @@
 import { scanFile, LogEntry } from '../../src/core/scanner.js';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -60,6 +62,33 @@ describe('scanFile', () => {
     const entries: LogEntry[] = [];
     await scanFile(FIXTURE_PATH, (entry) => entries.push(entry));
     expect(entries[0].sessionId).toBe('sess-001');
+  });
+
+  // Per-project cost depends entirely on this field. The log directory name is a
+  // slug of the original path and does not survive a folder rename, so `cwd` on
+  // the usage-bearing line is the only trustworthy way to say who spent what.
+  it('captures the working directory a turn ran in', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'scanner-cwd-'));
+    const file = join(dir, 'sess.jsonl');
+    writeFileSync(file, JSON.stringify({
+      type: 'assistant',
+      timestamp: '2026-03-22T10:00:00Z',
+      sessionId: 'sess-cwd',
+      cwd: 'J:\\callobuzz\\cob-claude-meter',
+      message: { model: 'claude-opus-5', usage: { input_tokens: 10, output_tokens: 20 } },
+    }) + '\n');
+
+    const entries: LogEntry[] = [];
+    await scanFile(file, (entry) => entries.push(entry));
+
+    expect(entries[0].cwd).toBe('J:\\callobuzz\\cob-claude-meter');
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('reports an empty cwd rather than undefined when the line omits it', async () => {
+    const entries: LogEntry[] = [];
+    await scanFile(FIXTURE_PATH, (entry) => entries.push(entry));
+    expect(entries[0].cwd).toBe('');
   });
 
   it('filters by date range', async () => {

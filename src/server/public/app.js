@@ -21,6 +21,17 @@ let report = null;
 let openProject = null;
 let openDay = null;
 
+/**
+ * The tokens view is fetched separately and only when it is first opened.
+ *
+ * A cold token scan walks every log file including subagent transcripts, which
+ * is thousands of files. Loading it alongside the hours report would make the
+ * dashboard's first paint wait on a view the user may never look at.
+ * `tokenKey` records the range it was built for so a stale one is refetched.
+ */
+let tokenReport = null;
+let tokenKey = null;
+
 /* ---------- utilities ---------- */
 
 const esc = (value) =>
@@ -52,6 +63,36 @@ function fmtHM(ms) {
   const h = Math.floor(total / 60);
   const m = total % 60;
   return h > 0 ? `${h}h ${String(m).padStart(2, '0')}m` : `${m}m`;
+}
+
+/**
+ * Money, always with two decimals and thousands separators.
+ *
+ * Deliberately not compacted to "$6.7k" — this is the number a client gets
+ * invoiced from, and rounding it away on the headline invites disputes.
+ */
+function fmtUsd(amount) {
+  const n = Number(amount) || 0;
+  return `$${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+/** Token counts run to billions once cache reads are included; compact them. */
+function fmtTokens(n) {
+  const v = Number(n) || 0;
+  if (v >= 1e9) return `${(v / 1e9).toFixed(2)}B`;
+  if (v >= 1e6) return `${(v / 1e6).toFixed(2)}M`;
+  if (v >= 1e3) return `${(v / 1e3).toFixed(1)}k`;
+  return String(Math.round(v));
+}
+
+/** The same split hmMarkup does, for money: full dollars big, cents small. */
+function usdMarkup(amount) {
+  const n = Number(amount) || 0;
+  const whole = Math.floor(Math.abs(n));
+  const cents = Math.round((Math.abs(n) - whole) * 100);
+  const sign = n < 0 ? '-' : '';
+  return `${sign}<span class="unit">$</span>${whole.toLocaleString('en-US')}` +
+    `<span class="unit">.${String(cents).padStart(2, '0')}</span>`;
 }
 
 /**
@@ -255,7 +296,7 @@ const STATE_SHAPE = {
   customStart: (v) => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v),
   customEnd: (v) => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v),
   idle: (v) => Number.isFinite(v) && v >= 30 && v <= 3600,
-  tab: (v) => ['projects', 'timeline', 'clients'].includes(v),
+  tab: (v) => ['projects', 'timeline', 'clients', 'tokens'].includes(v),
   search: (v) => typeof v === 'string',
   client: (v) => typeof v === 'string',
   tag: (v) => typeof v === 'string',
@@ -295,6 +336,13 @@ function buildQuery(forceRefresh) {
 }
 
 async function load(forceRefresh = false) {
+  // A range change invalidates the token view too; an idle-threshold change
+  // does not, so the key is compared rather than blindly cleared.
+  if (tokenKey !== null && tokenKey !== tokenQuery(false)) {
+    tokenReport = null;
+    tokenKey = null;
+  }
+
   $('loading').hidden = false;
   $('refresh-btn').classList.add('is-busy');
   try {
@@ -313,6 +361,46 @@ async function load(forceRefresh = false) {
   } finally {
     $('loading').hidden = true;
     $('refresh-btn').classList.remove('is-busy');
+  }
+
+  // Rescan means rescan whichever view is open, not just the hours one.
+  if (state.tab === 'tokens') await loadTokens(forceRefresh);
+}
+
+/** The range half of the query — tokens are unaffected by the idle threshold. */
+function tokenQuery(forceRefresh) {
+  const params = new URLSearchParams();
+  if (state.range === 'custom' && state.customStart && state.customEnd) {
+    params.set('start', state.customStart);
+    params.set('end', state.customEnd);
+  } else {
+    params.set('range', state.range);
+  }
+  if (forceRefresh) params.set('refresh', '1');
+  return params.toString();
+}
+
+async function loadTokens(forceRefresh = false) {
+  const key = tokenQuery(false);
+  if (!forceRefresh && tokenReport && tokenKey === key) return;
+
+  $('loading').hidden = false;
+  $('loading-text').textContent = 'Reading token usage…';
+  try {
+    const res = await fetch(`/api/tokens?${tokenQuery(forceRefresh)}`);
+    if (!res.ok) throw new Error(`Server returned ${res.status}`);
+    tokenReport = await res.json();
+    tokenKey = key;
+    renderTokens();
+  } catch (err) {
+    tokenReport = null;
+    tokenKey = null;
+    $('panel-tokens').innerHTML =
+      `<div class="empty"><strong>Could not load token usage</strong>${esc(err.message)}</div>`;
+    toast(err.message, true);
+  } finally {
+    $('loading').hidden = true;
+    $('loading-text').textContent = 'Scanning session logs…';
   }
 }
 
@@ -362,6 +450,30 @@ function visibleIds() {
   return new Set(visibleProjects().map((p) => p.id));
 }
 
+/**
+ * The same search, client, tag and hidden filters, applied to token projects.
+ *
+ * Both reports key projects on the resolved project path, so one client
+ * assignment governs both views and a filter means the same thing on each.
+ */
+function visibleTokenProjects() {
+  if (!tokenReport) return [];
+  const needle = state.search.trim().toLowerCase();
+
+  return tokenReport.projects.filter((p) => {
+    if (!state.showHidden && p.hidden) return false;
+    // `__none__` is the "no client assigned" option, not a client named that —
+    // the same sentinel the hours view uses, and it has to mean the same here.
+    if (state.client === '__none__' ? p.client : state.client && p.client !== state.client) return false;
+    if (state.tag && !p.tags.includes(state.tag)) return false;
+    if (needle) {
+      const hay = `${p.displayName} ${p.name} ${p.path}`.toLowerCase();
+      if (!hay.includes(needle)) return false;
+    }
+    return true;
+  });
+}
+
 /* ---------- rendering ---------- */
 
 async function renderAll() {
@@ -374,6 +486,9 @@ async function renderAll() {
   renderProjects();
   renderTimeline();
   renderClients();
+  // No-ops until the tokens tab has been opened at least once, so the filters
+  // and the grouping stay in step without forcing a scan nobody asked for.
+  renderTokens();
   renderFooter();
 }
 
@@ -754,6 +869,285 @@ function renderClients() {
     </table></div></div>`;
 }
 
+/* ---------- tokens ---------- */
+
+/** Sums the per-day summaries of the visible projects into one bucket per period. */
+function groupTokenDays(projects, groupBy) {
+  const buckets = new Map();
+
+  for (const p of projects) {
+    for (const [day, usage] of Object.entries(p.byDay)) {
+      const key = bucketKeyFor(day, groupBy);
+      let bucket = buckets.get(key);
+      if (!bucket) {
+        bucket = { key, days: new Set(), costUsd: 0, fresh: 0, full: 0, byProject: new Map() };
+        buckets.set(key, bucket);
+      }
+      bucket.days.add(day);
+      bucket.costUsd += usage.costUsd;
+      bucket.fresh += usage.fresh;
+      bucket.full += usage.full;
+      bucket.byProject.set(p.id, (bucket.byProject.get(p.id) ?? 0) + usage.costUsd);
+    }
+  }
+
+  return [...buckets.values()].sort((a, b) => b.key.localeCompare(a.key));
+}
+
+/** ISO week starts Monday, matching the hours timeline's own bucketing. */
+function bucketKeyFor(day, groupBy) {
+  if (groupBy === 'month') return day.slice(0, 7);
+  if (groupBy !== 'week') return day;
+
+  const [y, m, d] = day.split('-').map(Number);
+  const date = new Date(y, m - 1, d);
+  const dow = date.getDay();
+  date.setDate(date.getDate() - (dow === 0 ? 6 : dow - 1));
+  const mm = String(date.getMonth() + 1).padStart(2, '0');
+  const dd = String(date.getDate()).padStart(2, '0');
+  return `${date.getFullYear()}-${mm}-${dd}`;
+}
+
+function bucketLabel(key, groupBy) {
+  if (groupBy === 'month') {
+    const [y, m] = key.split('-').map(Number);
+    return new Date(y, m - 1, 1).toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+  }
+  const [y, m, d] = key.split('-').map(Number);
+  const date = new Date(y, m - 1, d);
+  const shown = date.toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' });
+  return groupBy === 'week' ? `Week of ${shown}` : shown;
+}
+
+function renderTokenStats(shown) {
+  if (!tokenReport) return;
+  const filtered = shown.length !== tokenReport.projects.length;
+
+  const cost = shown.reduce((acc, p) => acc + p.usage.costUsd, 0);
+  const fresh = shown.reduce((acc, p) => acc + p.usage.fresh, 0);
+  const full = shown.reduce((acc, p) => acc + p.usage.full, 0);
+  const input = shown.reduce((acc, p) => acc + p.usage.input, 0);
+  const output = shown.reduce((acc, p) => acc + p.usage.output, 0);
+  const cacheRead = shown.reduce((acc, p) => acc + p.usage.cacheRead, 0);
+  const days = new Set(shown.flatMap((p) => Object.keys(p.byDay))).size;
+
+  $('tstat-cost').innerHTML = usdMarkup(cost);
+  $('tstat-range').textContent = filtered
+    ? `${shown.length} of ${tokenReport.projects.length} projects`
+    : `${tokenReport.rangeLabel.replace(/-/g, ' ')}`;
+
+  $('tstat-fresh').textContent = fmtTokens(fresh);
+  $('tstat-io').textContent = `${fmtTokens(input)} in · ${fmtTokens(output)} out`;
+
+  $('tstat-full').textContent = fmtTokens(full);
+  // Cache reads are the bulk of the bill and the least obvious part of it.
+  $('tstat-cache').textContent = `${fmtTokens(cacheRead)} cache reads`;
+
+  $('tstat-perday').innerHTML = days > 0 ? usdMarkup(cost / days) : '&mdash;';
+  $('tstat-days').textContent = `over ${days} active day${days === 1 ? '' : 's'}`;
+
+  $('tstat-projects').textContent = String(shown.length);
+  const models = Object.keys(tokenReport.byModel).length;
+  $('tstat-projects').nextElementSibling.textContent = `${models} model${models === 1 ? '' : 's'}`;
+}
+
+function renderTokens() {
+  const panel = $('panel-tokens');
+  if (!tokenReport) return;
+
+  const shown = visibleTokenProjects();
+  renderTokenStats(shown);
+
+  if (shown.length === 0) {
+    panel.innerHTML = `<div class="empty"><strong>No usage in this range</strong>Adjust the filters or pick a wider range.</div>`;
+    return;
+  }
+
+  panel.innerHTML = [
+    tokenPeriodTable(shown),
+    tokenProjectTable(shown),
+    tokenClientTable(shown),
+    tokenModelTable(),
+    tokenPricingNote(),
+  ].join('');
+}
+
+function tokenPeriodTable(shown) {
+  const buckets = groupTokenDays(shown, state.groupBy);
+  if (buckets.length === 0) return '';
+
+  const max = Math.max(...buckets.map((b) => b.costUsd), 0.01);
+  const byId = new Map(shown.map((p) => [p.id, p]));
+
+  const rows = buckets.map((b) => {
+    const top = [...b.byProject.entries()]
+      .sort((x, y) => y[1] - x[1])
+      .slice(0, 3)
+      .map(([id, amount]) => `${esc(byId.get(id)?.displayName ?? id)} ${fmtUsd(amount)}`)
+      .join(' · ');
+    const span = state.groupBy === 'day' ? '' : `${b.days.size}d`;
+
+    return `
+      <tr>
+        <td><div class="proj-name">${esc(bucketLabel(b.key, state.groupBy))}</div>
+            <div class="proj-path">${top}</div></td>
+        <td class="bar-cell"><div class="bar-track"><div class="bar-fill" style="width:${((b.costUsd / max) * 100).toFixed(2)}%"></div></div></td>
+        <td class="num hours">${fmtUsd(b.costUsd)}</td>
+        <td class="num dim">${fmtTokens(b.fresh)}</td>
+        <td class="num dim">${fmtTokens(b.full)}</td>
+        <td class="num dim">${span}</td>
+      </tr>`;
+  }).join('');
+
+  const heading = state.groupBy === 'month' ? 'Month' : state.groupBy === 'week' ? 'Week' : 'Day';
+  return `
+    <h2 class="panel-heading">Consumption by ${heading.toLowerCase()}</h2>
+    <div class="table-wrap"><div class="scroll-x"><table>
+      <thead><tr>
+        <th>${heading}</th><th></th><th class="num">Cost</th>
+        <th class="num">Fresh</th><th class="num">With cache</th><th class="num">Days</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table></div></div>`;
+}
+
+function tokenProjectTable(shown) {
+  const sorted = [...shown].sort((a, b) => b.usage.costUsd - a.usage.costUsd);
+  const max = Math.max(...sorted.map((p) => p.usage.costUsd), 0.01);
+  const grand = sorted.reduce((acc, p) => acc + p.usage.costUsd, 0);
+
+  const rows = sorted.map((p) => {
+    const share = grand ? (p.usage.costUsd / grand) * 100 : 0;
+    const models = Object.entries(p.byModel)
+      .sort((a, b) => b[1].costUsd - a[1].costUsd)
+      .map(([m]) => shortModel(m))
+      .join(' · ');
+
+    return `
+      <tr data-token-project="${esc(p.id)}">
+        <td><div class="proj-name">${esc(p.displayName)}${p.client ? ` <span class="chip-mini">${esc(p.client)}</span>` : ''}</div>
+            <div class="proj-path">${models}</div></td>
+        <td class="bar-cell"><div class="bar-track"><div class="bar-fill" style="width:${((p.usage.costUsd / max) * 100).toFixed(2)}%"></div></div></td>
+        <td class="num hours">${fmtUsd(p.usage.costUsd)}</td>
+        <td class="num dim">${share.toFixed(1)}%</td>
+        <td class="num dim">${fmtTokens(p.usage.fresh)}</td>
+        <td class="num dim">${fmtTokens(p.usage.full)}</td>
+        <td class="num dim">${p.activeDays}</td>
+        <td class="num dim">${p.sessionCount}</td>
+      </tr>`;
+  }).join('');
+
+  return `
+    <h2 class="panel-heading">By project</h2>
+    <div class="table-wrap"><div class="scroll-x"><table>
+      <thead><tr>
+        <th>Project</th><th></th><th class="num">Cost</th><th class="num">Share</th>
+        <th class="num">Fresh</th><th class="num">With cache</th>
+        <th class="num">Days</th><th class="num">Sessions</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table></div></div>`;
+}
+
+function tokenClientTable(shown) {
+  const groups = new Map();
+  for (const p of shown) {
+    // Escape, not a literal NUL — a raw control byte makes the file read as
+    // binary to grep and diff. Sorts before any real client name.
+    const key = p.client ?? ' untagged';
+    if (!groups.has(key)) {
+      groups.set(key, { name: p.client ?? 'Untagged', costUsd: 0, fresh: 0, projects: [], days: new Set() });
+    }
+    const g = groups.get(key);
+    g.costUsd += p.usage.costUsd;
+    g.fresh += p.usage.fresh;
+    g.projects.push(p);
+    for (const day of Object.keys(p.byDay)) g.days.add(day);
+  }
+
+  const rows = [...groups.values()].sort((a, b) => b.costUsd - a.costUsd);
+  if (rows.length <= 1) return '';
+
+  const max = Math.max(...rows.map((r) => r.costUsd), 0.01);
+  const grand = rows.reduce((acc, r) => acc + r.costUsd, 0);
+
+  const body = rows.map((g) => `
+      <tr>
+        <td><div class="proj-name">${esc(g.name)}</div>
+            <div class="proj-path">${g.projects.slice(0, 4).map((p) => esc(p.displayName)).join(' · ')}${g.projects.length > 4 ? ` +${g.projects.length - 4}` : ''}</div></td>
+        <td class="bar-cell"><div class="bar-track"><div class="bar-fill" style="width:${((g.costUsd / max) * 100).toFixed(2)}%"></div></div></td>
+        <td class="num hours">${fmtUsd(g.costUsd)}</td>
+        <td class="num dim">${grand ? ((g.costUsd / grand) * 100).toFixed(1) : '0.0'}%</td>
+        <td class="num dim">${fmtTokens(g.fresh)}</td>
+        <td class="num dim">${g.projects.length}</td>
+        <td class="num dim">${g.days.size}</td>
+      </tr>`).join('');
+
+  return `
+    <h2 class="panel-heading">By client</h2>
+    <div class="table-wrap"><div class="scroll-x"><table>
+      <thead><tr>
+        <th>Client</th><th></th><th class="num">Cost</th><th class="num">Share</th>
+        <th class="num">Fresh</th><th class="num">Projects</th><th class="num">Days</th>
+      </tr></thead>
+      <tbody>${body}</tbody>
+    </table></div></div>`;
+}
+
+function shortModel(model) {
+  return String(model).replace(/^claude-/, '').replace(/-\d{8}$/, '');
+}
+
+function tokenModelTable() {
+  const models = Object.entries(tokenReport.byModel)
+    .sort((a, b) => b[1].costUsd - a[1].costUsd);
+  if (models.length === 0) return '';
+
+  const max = Math.max(...models.map(([, s]) => s.costUsd), 0.01);
+  const grand = models.reduce((acc, [, s]) => acc + s.costUsd, 0);
+
+  const body = models.map(([model, s]) => `
+      <tr>
+        <td><div class="proj-name">${esc(shortModel(model))}${s.fallback ? ' <span class="chip-mini">estimated rate</span>' : ''}</div></td>
+        <td class="bar-cell"><div class="bar-track"><div class="bar-fill" style="width:${((s.costUsd / max) * 100).toFixed(2)}%"></div></div></td>
+        <td class="num hours">${fmtUsd(s.costUsd)}</td>
+        <td class="num dim">${grand ? ((s.costUsd / grand) * 100).toFixed(1) : '0.0'}%</td>
+        <td class="num dim">${fmtTokens(s.fresh)}</td>
+        <td class="num dim">${fmtTokens(s.cacheRead)}</td>
+        <td class="num dim">${s.entries.toLocaleString()}</td>
+      </tr>`).join('');
+
+  // Model totals are report-wide: they come from the server's own breakdown,
+  // which is not re-derived per filter. Say so rather than let a filtered
+  // project table sit beside an unfiltered model table looking inconsistent.
+  return `
+    <h2 class="panel-heading">By model <span class="panel-note">all projects</span></h2>
+    <div class="table-wrap"><div class="scroll-x"><table>
+      <thead><tr>
+        <th>Model</th><th></th><th class="num">Cost</th><th class="num">Share</th>
+        <th class="num">Fresh</th><th class="num">Cache read</th><th class="num">Turns</th>
+      </tr></thead>
+      <tbody>${body}</tbody>
+    </table></div></div>`;
+}
+
+function tokenPricingNote() {
+  const p = tokenReport.pricing;
+  const guessed = p.guessedModels ?? [];
+
+  // A guessed price must never look like a measured one.
+  const warning = guessed.length > 0
+    ? `<div class="empty" style="margin-top:.9rem"><strong>Estimated rates in use</strong>` +
+      `${guessed.map(shortModel).map(esc).join(', ')} ${guessed.length > 1 ? 'are' : 'is'} not in the bundled ` +
+      `price table, so ${guessed.length > 1 ? 'those lines are' : 'that line is'} priced at flagship rates — a guess, not a quote.</div>`
+    : '';
+
+  return `${warning}
+    <p class="panel-foot">Cost is an estimate from ${esc(p.source)} pricing (${esc(p.version)}). ` +
+    `Cache reads are billed at a reduced rate and are counted in “with cache”, not in “fresh”. ` +
+    `Subagent usage is billed to the project that launched it.</p>`;
+}
+
 function renderFooter() {
   if (!report) return;
   const idleMin = report.idleSeconds / 60;
@@ -812,8 +1206,24 @@ function setTab(tab) {
   $('panel-projects').hidden = tab !== 'projects';
   $('panel-timeline').hidden = tab !== 'timeline';
   $('panel-clients').hidden = tab !== 'clients';
-  $('group-field').hidden = tab !== 'timeline';
+  $('panel-tokens').hidden = tab !== 'tokens';
+
+  // Hours and cost have separate headline tiles. Showing both at once would put
+  // two different "totals" side by side with nothing saying which is which.
+  const onTokens = tab === 'tokens';
+  $('stats').hidden = onTokens;
+  $('token-stats').hidden = !onTokens;
+
+  // Day/week/month applies to the timeline and to the token breakdown; the
+  // idle threshold is a timing control and means nothing to token counts.
+  $('group-field').hidden = tab !== 'timeline' && !onTokens;
+  $('idle-select').closest('.field').hidden = onTokens;
+
   saveState();
+  // Fetched on first open rather than with the page: a cold token scan reads
+  // every subagent transcript too, and that is a wait nobody asked for if they
+  // never leave the hours view.
+  if (onTokens) loadTokens();
 }
 
 function wire() {

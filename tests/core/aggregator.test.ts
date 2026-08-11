@@ -6,6 +6,7 @@ function makeEntry(overrides: Partial<LogEntry> = {}): LogEntry {
     timestamp: new Date('2026-03-22T10:00:00Z'),
     model: 'claude-opus-4-6',
     sessionId: 'sess-001',
+    cwd: 'J:\\work\\alpha',
     input_tokens: 100,
     output_tokens: 200,
     cache_read_input_tokens: 5000,

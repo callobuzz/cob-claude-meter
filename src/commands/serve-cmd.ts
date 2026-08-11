@@ -3,6 +3,8 @@ import { discoverLogPaths } from '../core/path-resolver.js';
 import { TagStore } from '../core/tag-store.js';
 import { TimelineCache } from '../core/timeline-cache.js';
 import { DayArchive } from '../core/day-archive.js';
+import { TokenCache } from '../core/token-cache.js';
+import { TokenArchive } from '../core/token-archive.js';
 import { startDashboardServer } from '../server/server.js';
 
 export interface ServeFlags {
@@ -51,6 +53,14 @@ export async function runServeCommand(flags: ServeFlags): Promise<RunningServer 
   archive.load();
   archive.sweepTempFiles();
 
+  const tokenCache = new TokenCache(dataDir);
+  tokenCache.load();
+  tokenCache.sweepTempFiles();
+
+  const tokenArchive = new TokenArchive(dataDir);
+  tokenArchive.load();
+  tokenArchive.sweepTempFiles();
+
   const port = Number(flags.port ?? process.env['PORT'] ?? 4317);
   const host = flags.host ?? process.env['HOST'] ?? '127.0.0.1';
 
@@ -61,6 +71,8 @@ export async function runServeCommand(flags: ServeFlags): Promise<RunningServer 
     tags,
     cache,
     archive,
+    tokenCache,
+    tokenArchive,
     reportTtlMs: 15_000,
   });
 

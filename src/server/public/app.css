@@ -813,6 +813,58 @@ tr.detail td {
   font-family: var(--font-mono);
 }
 
+/* ---------- tokens panel ----------
+   The tokens view stacks several tables in one panel, so unlike the other tabs
+   it needs headings to separate them. */
+
+.panel-heading {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--text-secondary);
+  margin: 26px 0 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.panel-heading:first-child { margin-top: 0; }
+
+/* Marks a table whose numbers are not narrowed by the current filter. */
+.panel-note {
+  font-size: 9.5px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  border: 1px solid var(--border-strong);
+  background: var(--surface-3);
+  border-radius: 999px;
+  padding: 2px 8px;
+}
+
+.panel-foot {
+  margin: 14px 0 4px;
+  font-size: 11.5px;
+  line-height: 1.6;
+  color: var(--text-muted);
+  max-width: 78ch;
+}
+
+/* Inline label beside a project or model name — client tag, estimated rate. */
+.chip-mini {
+  display: inline-block;
+  vertical-align: 1px;
+  margin-left: 6px;
+  font-size: 9.5px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  color: var(--text-secondary);
+  border: 1px solid var(--border-strong);
+  background: var(--surface-3);
+  border-radius: 999px;
+  padding: 1px 7px;
+}
+
 @media (max-width: 1180px) {
   .stats { grid-template-columns: 1fr 1fr 1fr; }
   .stat-hero { grid-column: span 3; }

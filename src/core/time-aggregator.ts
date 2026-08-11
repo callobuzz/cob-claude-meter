@@ -175,7 +175,7 @@ async function scanWithRetry(
   }
 }
 
-function findProjectDirs(logRoot: string): string[] {
+export function findProjectDirs(logRoot: string): string[] {
   try {
     return readdirSync(logRoot, { withFileTypes: true })
       .filter(e => e.isDirectory())
@@ -185,7 +185,7 @@ function findProjectDirs(logRoot: string): string[] {
   }
 }
 
-function leafName(projectPath: string): string {
+export function leafName(projectPath: string): string {
   const segments = projectPath.split(/[\\/]+/).filter(Boolean);
   return segments[segments.length - 1] ?? projectPath;
 }

@@ -5,6 +5,15 @@ export interface LogEntry {
   timestamp: Date;
   model: string;
   sessionId: string;
+  /**
+   * Working directory the turn ran in, as reported by the log line itself.
+   *
+   * Claude Code writes `cwd` on the same entries that carry `usage`, which is
+   * what makes per-project cost possible at all — the directory a log file
+   * sits in is a slug of the original path and does not survive a rename.
+   * Empty when the line omitted it; callers fall back to the log directory.
+   */
+  cwd: string;
   input_tokens: number;
   output_tokens: number;
   cache_read_input_tokens: number;
@@ -56,6 +65,7 @@ export async function scanFile(
         timestamp: ts,
         model: json.message.model ?? 'unknown',
         sessionId: json.sessionId ?? 'unknown',
+        cwd: typeof json.cwd === 'string' ? json.cwd : '',
         input_tokens: usage.input_tokens ?? 0,
         output_tokens: usage.output_tokens ?? 0,
         cache_read_input_tokens: usage.cache_read_input_tokens ?? 0,

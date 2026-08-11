@@ -64,8 +64,9 @@ for today and for every session you have already run.
 | **Exact Cost Estimates** | Uses real cache breakdowns — no guessing |
 | **Time Ranges** | Today, this week, this month, custom ranges |
 | **Work-Hours Tracking** | Per-project hours from Claude Code's own turn durations and tool spans — subagents and background jobs included |
-| **History Outlives the Logs** | Finished days are archived, so hours survive Claude Code's 30-day log cleanup |
-| **Multi-Client Billing** | Tag projects by client, filter and roll up hours per client |
+| **Cost Per Project** | Which project, which day, which client spent the money — subagent usage billed to the project that launched it |
+| **History Outlives the Logs** | Finished days are archived, so hours *and* spend survive Claude Code's 30-day log cleanup |
+| **Multi-Client Billing** | Tag projects by client, filter and roll up hours and cost per client |
 | **Web Dashboard** | Filterable, searchable UI — run it with or without Docker |
 | **Retroactive** | Works on logs you already have — no timer, nothing to start |
 | **Live Watch Mode** | Real-time dashboard with auto-refresh |
@@ -241,6 +242,70 @@ Assign a client and free-form tags to any project from the dashboard, then filte
 and roll up by client. Tags live in `tags.json` inside the data directory,
 separate from the log-derived numbers, so they survive rescans and rebuilds.
 
+---
+
+## Tokens and Cost
+
+The **Tokens & cost** tab answers the question the CLI report cannot: not "what
+did I spend" but **"who spent it"**. Same range chips, same client and tag
+filters, same projects — costed instead of timed.
+
+| Table | What it tells you |
+|---|---|
+| **Consumption by day** | Spend per day, week or month, with the projects that drove each period |
+| **By project** | Cost, share, fresh and cached tokens, active days, sessions |
+| **By client** | The month's bill per client, rolled up from your tag assignments |
+| **By model** | Which model the money went to, and whether its price was known or guessed |
+
+Hours and cost resolve projects **the same way** — same directory walk, same
+`cwd`-based root resolution, same merging of renamed folders. A project is one
+project on both tabs, so a single client assignment governs both and the two
+views can never disagree about who the work belongs to.
+
+### Fresh vs with-cache
+
+Two token totals, and the gap between them is enormous:
+
+- **Fresh** — input + output. What the conversation actually generated.
+- **With cache** — plus cache reads and cache writes. What you are billed on.
+
+On a long agentic session the second can be *hundreds of times* the first, and
+cache reads are usually the largest single line on the bill. Showing only fresh
+tokens would understate the cost by orders of magnitude, so both are always
+present and the headline figure is the dollar amount.
+
+### Subagents are billed to their parent
+
+This is where cost accounting parts company with time accounting. The hours
+pipeline deliberately ignores subagent transcripts, because a subagent runs
+*inside* its parent's wall-clock and counting it would bill the same hour twice.
+
+Tokens are the opposite: a subagent spends its own budget **on top of** the
+parent's. On an agent-heavy log directory that is the majority of all traffic —
+skipping it under-reports the bill badly. So subagent usage is counted in full
+and attributed to the project that launched it, while still counting as one
+session rather than several.
+
+### Cost is an estimate
+
+Prices come from a bundled table, not from your Anthropic invoice. Any model the
+table doesn't know is priced at flagship rates and **labelled as a guess** in the
+model table — a guessed price must never look like a measured one. Run
+`claude-meter pricing` to see the table's age and any scheduled changes.
+
+The archive stores **token counts, never dollars**. A price correction therefore
+applies to your history as well as to days whose logs still exist, instead of
+freezing old days at whatever the table said the first time it saw them.
+
+### The first load is slow, the rest are not
+
+A cold scan reads every session log *and* every subagent transcript — thousands
+of files, several seconds. After that the per-day, per-model breakdown is cached
+per file on mtime and size, and **every range is served from memory**: switching
+from today to all-time costs nothing, because narrowing the range never made the
+scan cheaper in the first place. The tab is fetched only when you first open it,
+so the hours view never waits on a scan you didn't ask for.
+
 ### Who this is for
 
 Developers juggling **several clients or projects at once** — especially anyone
@@ -253,6 +318,8 @@ of how much time went into each client, without a timer to start, stop or forget
 |---|---|
 | **Bill a client by the hour** | Tag projects with a client, filter by client, read the month's hours |
 | **Multi-client time split** | Clients tab — hours and share of total per client |
+| **Charge back API cost** | Tokens & cost tab — spend per client, per project, per day |
+| **Find the expensive project** | Sort by cost, not by hours — the two rarely rank the same |
 | **Freelance timesheets** | Per-day hours per project, reconstructed from work you already did |
 | **Productivity check** | Timeline grouped by day or week — where the hours went |
 | **Plan and quote** | "That feature took 31 hours" from real data instead of memory |
@@ -314,6 +381,10 @@ change, so they are computed once and written to `day-archive.ndjson` in the dat
 directory. When Claude Code later deletes the transcripts, the day is served from
 there instead: same projects, same per-day breakdown, same wall-clock union
 across a filtered subset of them.
+
+Token usage is archived the same way, to `token-archive.ndjson`, so **spend
+outlives the logs too**. It holds raw token counts rather than dollars, so every
+day is priced by the current table on every render.
 
 What that does and does not buy you:
 
@@ -499,12 +570,14 @@ to destroy them.
 | Session logs | your machine, mounted **read-only** | untouched — no Docker action can harm them |
 | `tags.json` | `./meter-data/` or `~/.claude-meter/` | irreplaceable — your clients, aliases and tags. Back it up |
 | `day-archive.ndjson` | `./meter-data/` or `~/.claude-meter/` | irreplaceable once the logs it came from expire. Back it up |
+| `token-archive.ndjson` | `./meter-data/` or `~/.claude-meter/` | irreplaceable once the logs it came from expire. Back it up |
 | `timeline-cache.ndjson` | `./meter-data/` or `~/.claude-meter/` | disposable, rebuilds itself on the next scan |
+| `token-cache.ndjson` | `./meter-data/` or `~/.claude-meter/` | disposable, rebuilds itself on the next scan |
 
-Back both up by copying two files:
+Back the irreplaceable ones up by copying three files:
 
 ```bash
-cp meter-data/tags.json meter-data/day-archive.ndjson ~/backups/
+cp meter-data/tags.json meter-data/day-archive.ndjson meter-data/token-archive.ndjson ~/backups/
 ```
 
 The keys in `tags.json` are the project paths recorded inside your logs, not the
