@@ -8,6 +8,14 @@ dist/
 .claude-meter/
 .claude/
 
+# npm auth lives here during a publish. Never commit it, even when it only
+# holds a ${NPM_TOKEN} reference — the next person to edit it may paste the
+# real token in.
+.npmrc
+
+# Browser-automation output from local verification runs.
+.playwright-mcp/
+
 # Internal planning docs (design/implementation plans)
 docs/plans/
 docs/prd.md
