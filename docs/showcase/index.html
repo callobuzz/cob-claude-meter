@@ -507,11 +507,11 @@
 
 <!-- Work hours dashboard -->
 <section class="section">
-  <span class="eyebrow">New in 0.3</span>
-  <h2>Your Work Hours, <span class="accent">Derived From Your Logs</span></h2>
+  <span class="eyebrow">New in 0.5</span>
+  <h2>Your Work Hours, <span class="accent">Measured Not Guessed</span></h2>
   <p class="lede">
-    Claude Meter reads the timestamps already in your session transcripts and reconstructs when you were
-    actually working. No timers to start, nothing to remember, no clocking in. Run
+    Claude Code times every turn and writes the result into your transcript. Claude Meter reads those
+    numbers straight out and adds them up. No timers to start, nothing to remember, no clocking in. Run
     <code style="font-family: var(--font-mono); color: var(--jade-lift);">claude-meter serve</code>
     and open it in your browser.
   </p>
@@ -600,7 +600,67 @@
       </div>
     </div>
   </div>
-  <p class="mock-note">Illustrative layout. Filter by client, project, or date range &mdash; wall-clock recalculates exactly for whatever is on screen.</p>
+  <p class="mock-note">
+    Illustrative layout. Filter by client, project, or date range &mdash; wall-clock recalculates exactly
+    for whatever is on screen. Days you did nothing show as <code style="font-family: var(--font-mono);">0</code>
+    rather than disappearing, and anything spanning more than one month folds into collapsible month rows.
+  </p>
+</section>
+
+<!-- How the hours are measured -->
+<section class="section">
+  <span class="eyebrow">What changed in 0.5</span>
+  <h2>A Twelve-Minute Build Is <span class="accent">Twelve Minutes</span></h2>
+  <p class="problem-lede">
+    Earlier versions had no measured duration to work from, so they inferred one: sum the gaps between
+    log entries and throw away anything longer than an idle cutoff. That got both halves wrong.
+    A long build looked exactly like a coffee break and was discarded &mdash; while the minutes you
+    spent reading a reply counted as work, as long as you answered quickly enough.
+  </p>
+
+  <div class="problem">
+    <div class="compare">
+      <div class="compare-card unknown">
+        <div class="who">Before &mdash; inferred</div>
+        <div class="amount">~5 min</div>
+        <p class="note">
+          A turn that spent twelve minutes inside one <code style="font-family: var(--font-mono);">npm run build</code>
+          left a twelve-minute silence in the log. Over the cutoff, so it was dropped as idle.
+          Your longest work vanished first.
+        </p>
+      </div>
+      <div class="compare-vs">VS</div>
+      <div class="compare-card">
+        <div class="who">Now &mdash; measured</div>
+        <div class="amount est">12 min</div>
+        <p class="note">
+          Claude Code recorded how long that turn took. Claude Meter reads the number.
+          No threshold, no cap, no inference &mdash; and the time between turns, spent however
+          you spend it, counts as nothing.
+        </p>
+      </div>
+    </div>
+
+    <div class="verdict">
+      <span class="big">The idle cutoff is now a fallback.</span>
+      <span class="small">
+        Sessions carrying turn records ignore it entirely. Only transcripts written before Claude Code
+        started timing turns fall back to the old estimate &mdash; and the dashboard footer tells you
+        exactly how many of each you are looking at.
+      </span>
+    </div>
+
+    <div class="callout" style="margin-top: 1.5rem;">
+      <h3>One thing it still gets wrong, and we are not going to hide it</h3>
+      <p>
+        A permission prompt you approve after a delay sits <em>inside</em> the recorded turn. The turn is
+        paused waiting for you, but nothing in the log separates that wait from real execution. Leave an
+        approval pending over lunch and the hour lands in your total. Capping turns would fix it by
+        throwing away the genuinely long builds this release exists to capture, so the honest move is to
+        tell you rather than quietly correct it.
+      </p>
+    </div>
+  </div>
 </section>
 
 <!-- Terminal Demo -->
@@ -707,7 +767,7 @@
     <div class="feature-card">
       <span class="icon">&#9201;</span>
       <h3>Work-Hours Tracking</h3>
-      <p>Active time derived from log timestamps, with an idle cutoff so breaks are not billed as work.</p>
+      <p>Hours built from the turn durations Claude Code records itself. Long builds count in full; the time between turns does not count at all.</p>
     </div>
     <div class="feature-card">
       <span class="icon">&#128202;</span>

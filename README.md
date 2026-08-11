@@ -63,7 +63,7 @@ for today and for every session you have already run.
 | **Per-Model Breakdown** | See usage split across Opus, Sonnet, Haiku |
 | **Exact Cost Estimates** | Uses real cache breakdowns — no guessing |
 | **Time Ranges** | Today, this week, this month, custom ranges |
-| **Work-Hours Tracking** | Active time per project and per day, idle time excluded |
+| **Work-Hours Tracking** | Per-project hours measured from Claude Code's own recorded turn durations |
 | **Multi-Client Billing** | Tag projects by client, filter and roll up hours per client |
 | **Web Dashboard** | Filterable, searchable UI — run it with or without Docker |
 | **Retroactive** | Works on logs you already have — no timer, nothing to start |
@@ -162,11 +162,19 @@ no daemon runs — it works retroactively across your entire log history.
 
 ### How active time is measured
 
-Every log entry carries a timestamp. Active time is the sum of gaps between
-consecutive entries, **discarding any gap longer than the idle cutoff** (5 minutes
-by default). An idle terminal writes nothing, so it excludes itself. A four-minute
-build sits under the cutoff and counts as work, which is the intent — time the
-pipeline is live is time spent.
+Claude Code times every turn and writes the result into the transcript. Claude
+Meter reads those numbers directly, so a turn counts for exactly as long as it
+ran — a twelve-minute `npm run build` inside a turn is twelve minutes, and the
+minutes you spend reading the reply afterwards are none. Nothing is inferred,
+nothing is capped, and no threshold changes the answer.
+
+Sessions that carry no turn records — very old ones, and anything written before
+Claude Code started timing turns — fall back to the earlier method: sum the gaps
+between consecutive log entries and **discard any gap longer than the idle
+cutoff** (5 minutes by default). That is an estimate, and it is why the cutoff
+still exists. The dashboard header labels it *(fallback)* and the footer tells
+you how many sessions came from each source, so you always know which number you
+are reading.
 
 Two totals are reported, and they answer different questions:
 
@@ -195,6 +203,18 @@ a folder rename) merge back together.
 Subagent transcripts under `<session-id>/subagents/` are deliberately ignored — a
 subagent runs *inside* its parent session, so counting them would multiply the
 same terminal.
+
+### Reading the timeline
+
+The timeline covers every day in range, including the ones you did nothing —
+a day with no work is a row reading `0`, not a missing row. A calendar with gaps
+punched in it is unreadable, and a skipped date is impossible to tell apart from
+a bug.
+
+Span more than one month and the days fold under collapsible month headings
+carrying that month's totals; the newest month opens and the rest stay shut, so
+a year of history arrives as twelve rows instead of three hundred and sixty-five.
+A range inside a single month shows no headings at all.
 
 ### Clients and tags
 
@@ -225,16 +245,22 @@ last month is already there.
 
 ### How accurate is it?
 
-**Treat it as a fair, defensible estimate — not a stopwatch.** It measures when
-your Claude Code sessions were actively producing output, which is a good proxy
-for time worked, but it is a proxy:
+**Treat it as a fair, defensible estimate — not a stopwatch.** For sessions with
+turn records the durations themselves are measured rather than guessed, but what
+they measure is *Claude working*, which is a proxy for *you working*:
 
 - **Not counted:** thinking away from the terminal, meetings, reading docs,
-  reviewing code in your editor, anything longer than the idle cutoff
-- **Counted:** time Claude spends working while you wait, including long tool
-  runs and builds under the cutoff
-- **Sensitive to one setting:** the idle cutoff. At 2 minutes a month reads much
-  lower than at 10 — pick one and stay on it so periods stay comparable
+  reviewing code in your editor, or the stretch between a turn finishing and
+  your next prompt — however you spend it
+- **Counted:** the full length of every turn, including the long tool runs,
+  builds and test suites you sat through waiting
+- **Counted, and arguably shouldn't be:** a permission prompt you approve after
+  a delay. The turn is paused waiting for you, but Claude Code records the wait
+  as part of the turn and nothing in the log separates it from real execution.
+  Leave an approval pending over lunch and that hour lands in your total. There
+  is no honest fix for this from the outside — capping turns would throw away
+  the genuinely long builds this release exists to capture — so it is stated
+  here rather than silently corrected.
 
 For hourly billing, the honest use is as a **floor and a sanity check** — evidence
 that a project consumed roughly N hours — rather than an invoice generated
@@ -285,8 +311,9 @@ already been pruned, and what a longer window costs in disk and privacy. See
   separate sets of numbers; there is no aggregation across machines.
 - **Subagent transcripts are excluded on purpose.** They run *inside* a parent
   session, so counting them would multiply the same wall-clock time.
-- **Idle cutoff changes every number.** A month at a 2-minute cutoff reads much
-  lower than at 10. Pick one and stay on it, or periods stop being comparable.
+- **The idle cutoff only moves sessions that have no turn records.** Changing it
+  leaves measured sessions untouched. It still matters for a period made mostly
+  of fallback sessions — the dashboard footer tells you that split.
 - **Day boundaries follow `TZ`.** Change the timezone and evening work moves
   between days. In Docker, set `TZ` explicitly — the container is UTC otherwise.
 - **Project identity comes from the session's working directory.** Move a project
@@ -360,10 +387,19 @@ TZ=Asia/Kolkata                                 # your timezone — see warning 
 the scan cache in a folder on your machine:
 
 ```yaml
+ports:
+  - "0.0.0.0:${CLAUDE_METER_PORT:-4317}:4317"
 volumes:
   - "${CLAUDE_LOGS_DIR:-$HOME/.claude/projects}:/logs:ro"
   - "${CLAUDE_METER_DATA_HOST_DIR:-./meter-data}:/data"
 ```
+
+The `0.0.0.0:` prefix on the port is deliberate. The bare `"4317:4317"` form
+publishes on both IP stacks, and on Docker Desktop the IPv6 side is handled by a
+relay process that accepts the connection and then never answers — browsers try
+`::1` first, so the page hangs instead of failing over. With no IPv6 listener the
+`::1` attempt is refused instantly and the client falls straight through to
+IPv4. Reachability from your LAN is unchanged.
 
 A host folder rather than a named Docker volume, on purpose. Assigning clients
 to twenty projects is slow manual work, and `docker compose down -v` deletes
@@ -413,7 +449,7 @@ to destroy them.
 |---|---|---|
 | Session logs | your machine, mounted **read-only** | untouched — no Docker action can harm them |
 | `tags.json` | `./meter-data/` or `~/.claude-meter/` | the only irreplaceable file — back it up |
-| `timeline-cache.json` | `./meter-data/` or `~/.claude-meter/` | disposable, rebuilds itself on the next scan |
+| `timeline-cache.ndjson` | `./meter-data/` or `~/.claude-meter/` | disposable, rebuilds itself on the next scan |
 
 Back it up by copying one file:
 
@@ -472,8 +508,29 @@ the report rather than showing zero. `claude-meter doctor` flags this too.
 ### Performance
 
 Scans are cached per file on mtime + size, so only sessions that changed get
-re-read. A cold scan of ~500 MB of logs takes a few seconds; warm reloads are
-under 100 ms. The cache survives restarts.
+re-read. A cold scan of ~1 GB of logs takes about fifteen seconds; warm reloads
+are around 100 ms. The cache survives restarts.
+
+It is a line-per-record file (`timeline-cache.ndjson`) that new entries are
+appended to, rewritten in full only when the dead weight passes half the file.
+The previous format was a single JSON blob written in one call, which is what
+made a large cache fail with `ENOMEM` on a Docker bind mount and take the whole
+request down with it. If a write does fail now the report still renders and you
+get a warning saying the next load will be slower. A `timeline-cache.json` left
+over from an older version is read once and then deleted.
+
+Entries measured from turn records survive a change to the idle cutoff, since
+the cutoff cannot affect them — switching it is close to instant instead of
+forcing a full rescan.
+
+Reads retry with backoff before giving up on a file. Under sustained pressure a
+bind mount will refuse a read that succeeds moments later, and a session dropped
+that way used to vanish from the totals with no error at all.
+
+The report itself no longer ships raw intervals to the browser. The union that
+produces the wall-clock figure is computed server-side (`POST /api/wallclock`),
+so the page payload stays flat as your history grows instead of scaling with the
+number of turns you have ever run.
 
 ### Troubleshooting
 
@@ -483,8 +540,10 @@ under 100 ms. The cache survives restarts.
 | Days look shifted | `TZ` not set or wrong — fix `.env`, then `docker compose up -d` |
 | Port already in use | Something else owns the port. Change `CLAUDE_METER_PORT`, or find the owner — a stray `claude-meter serve` on the host will win over Docker on `127.0.0.1` |
 | "No log directories found" | Set `CLAUDE_LOGS_DIR` (Docker) or `claude-meter config --set logPaths='["/path"]'` |
-| Hours look too low | Raise the idle cutoff in the header dropdown — long unattended builds may exceed it |
-| Hours look too high | Lower the idle cutoff, or read wall-clock instead of summed if you run several terminals |
+| Page hangs instead of loading | An IPv6 relay is swallowing the connection. Make sure the port is published as `0.0.0.0:4317:4317`, not `4317:4317`, then `docker compose up -d` |
+| Hours look too high | Read wall-clock instead of summed if you run several terminals at once. A permission prompt left waiting also counts — see [How accurate is it?](#how-accurate-is-it) |
+| Hours look too low | Check the dashboard footer. If most sessions are *estimated from activity gaps*, raise the idle cutoff; if they are *measured from recorded turn times*, the cutoff changes nothing |
+| Changing the idle cutoff does nothing | Expected for measured sessions — it only applies to the fallback ones |
 | Toast says logs were skipped | One or more logs were unreadable and totals are incomplete — check `docker compose logs` |
 | Projects missing from "All time" | Claude Code deleted their transcripts — run `claude-meter retention` to see which, and to extend the window |
 | "All time" only reaches back a month | Same cause: `cleanupPeriodDays` defaults to 30 days |
