@@ -217,6 +217,48 @@ describe('buildTimeReport', () => {
     expect(report.projects[0].totalMs).toBe(60 * MIN);
   });
 
+  it('keeps retrying a stubbornly transient read rather than dropping the session', async () => {
+    // A real cold scan of a 1.26GB log directory failed four times running on
+    // some files before succeeding. Giving up early does not error — it quietly
+    // omits those hours, which is worse than failing loudly.
+    const start = new Date(2026, 6, 15, 9, 0);
+    project('P--app').session('stubborn', 'J:\\app', start, 61, 1);
+
+    let attempts = 0;
+    const report = await buildTimeReport({
+      logPaths: [logs],
+      idleSeconds: 300,
+      scanner: async (filePath) => {
+        attempts++;
+        if (attempts <= 4) throw new Error('ENOMEM: not enough memory, read');
+        return scanSessionTimestamps(filePath);
+      },
+    });
+
+    expect(attempts).toBe(5);
+    expect(report.scan.filesFailed).toBe(0);
+    expect(report.projects[0].totalMs).toBe(60 * MIN);
+  });
+
+  it('reports the first error once the retry budget is exhausted', async () => {
+    const start = new Date(2026, 6, 15, 9, 0);
+    project('P--app').session('hopeless', 'J:\\app', start, 61, 1);
+
+    let attempts = 0;
+    const report = await buildTimeReport({
+      logPaths: [logs],
+      idleSeconds: 300,
+      scanner: async () => {
+        attempts++;
+        throw new Error('ENOMEM: not enough memory, read');
+      },
+    });
+
+    expect(attempts).toBe(5); // one initial try plus the four backoff attempts
+    expect(report.scan.filesFailed).toBe(1);
+    expect(report.warnings[0]).toContain('ENOMEM');
+  });
+
   it('returns an empty report when no logs exist', async () => {
     const report = await buildTimeReport({ logPaths: [join(root, 'missing')], idleSeconds: 300 });
     expect(report.projects).toEqual([]);

@@ -126,26 +126,38 @@ function findSessionFiles(projectDir: string): string[] {
 
 const sleep = (ms: number) => new Promise(done => setTimeout(done, ms));
 
+/** Backoff between read attempts. Length is the retry budget for one file. */
+const READ_RETRY_DELAYS_MS = [120, 400, 1200, 3000];
+
 /**
- * Reads one session, retrying once on a transient failure.
+ * Reads one session, retrying with backoff on a transient failure.
  *
- * Container bind mounts (Docker Desktop on Windows especially) can return
- * ENOMEM or EBUSY when a cold scan pushes hundreds of megabytes through the
- * filesystem layer at once. A retry clears it; if it does not, the caller skips
- * that file rather than failing the whole report.
+ * Container bind mounts (Docker Desktop on Windows especially) return ENOMEM
+ * when a cold scan pushes hundreds of megabytes through the filesystem layer
+ * back to back. The failure is pressure, not corruption: the same file reads
+ * fine once the layer drains.
+ *
+ * A single quick retry was not enough. On a 1.26GB log directory it left 21 of
+ * 89 sessions unread in one pass, and because a skipped file is simply excluded
+ * the dashboard reported 21 hours instead of 121 — wrong, not obviously broken.
+ * Backing off further recovers them inside the same request.
+ *
+ * If every attempt fails the caller still skips that file rather than failing
+ * the whole report, and the gap is surfaced as a warning.
  */
 async function scanWithRetry(
   filePath: string,
   read: (p: string) => Promise<SessionScan>,
 ): Promise<SessionScan> {
-  try {
-    return await read(filePath);
-  } catch (first) {
-    await sleep(120);
+  let firstError: unknown = null;
+
+  for (let attempt = 0; ; attempt++) {
     try {
       return await read(filePath);
-    } catch {
-      throw first;
+    } catch (err) {
+      if (firstError === null) firstError = err;
+      if (attempt >= READ_RETRY_DELAYS_MS.length) throw firstError;
+      await sleep(READ_RETRY_DELAYS_MS[attempt]);
     }
   }
 }

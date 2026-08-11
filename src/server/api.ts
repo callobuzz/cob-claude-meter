@@ -54,9 +54,24 @@ interface CachedReport {
 
 let memo: CachedReport | null = null;
 
+/**
+ * Builds currently running, keyed the same way the memo is.
+ *
+ * The memo only exists once a build has finished, so without this every
+ * concurrent request for the same report starts its own scan. That is the
+ * normal case, not an edge one: loading the dashboard fires /api/report and
+ * /api/wallclock together, and both need the report. On a cold cache over a
+ * large log directory those duplicate scans compete for the same CPU and
+ * saturate the event loop, which makes the server stop answering anything at
+ * all until they finish. Sharing the in-flight promise means N callers cost
+ * one scan.
+ */
+const inFlight = new Map<string, Promise<TimeReport>>();
+
 /** Drops the in-memory report cache. Exported for tests and for forced refreshes. */
 export function invalidateReportCache(): void {
   memo = null;
+  inFlight.clear();
 }
 
 function resolveRange(params: URLSearchParams): { start: number; end: number; label: string } {
@@ -106,16 +121,29 @@ async function getReport(
     return memo.report;
   }
 
-  const report = await buildTimeReport({
+  // Join a build already under way rather than starting a second one. A forced
+  // refresh still waits on it: the scan it would duplicate is reading the same
+  // files it would read itself, and one is enough.
+  const running = inFlight.get(key);
+  if (running) return running;
+
+  const build = buildTimeReport({
     logPaths: ctx.logPaths,
     idleSeconds,
     start,
     end,
     cache: ctx.cache,
-  });
+  })
+    .then(report => {
+      memo = { key, builtAt: Date.now(), report };
+      return report;
+    })
+    .finally(() => {
+      inFlight.delete(key);
+    });
 
-  memo = { key, builtAt: Date.now(), report };
-  return report;
+  inFlight.set(key, build);
+  return build;
 }
 
 /**

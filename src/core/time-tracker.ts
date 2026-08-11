@@ -54,7 +54,12 @@ export async function scanSessionTimestamps(filePath: string): Promise<SessionSc
   const turns: Interval[] = [];
 
   const rl = createInterface({
-    input: createReadStream(filePath, { encoding: 'utf-8' }),
+    // A smaller read buffer than the 64KB default. Session logs run past 100MB
+    // and a cold scan walks every one of them; on a Docker bind mount the
+    // larger buffer is enough extra pressure to start returning ENOMEM, which
+    // costs a whole session from the totals. Smaller chunks read slightly more
+    // often and survive.
+    input: createReadStream(filePath, { encoding: 'utf-8', highWaterMark: 16 * 1024 }),
     crlfDelay: Infinity,
   });
 
