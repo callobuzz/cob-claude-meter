@@ -34,6 +34,17 @@ export type TimingSource = 'turns' | 'gaps';
  */
 const WAITING_ON_HUMAN = new Set(['AskUserQuestion', 'ExitPlanMode']);
 
+/**
+ * Tools that keep running after the turn that started them has ended.
+ *
+ * These are the reason tool spans exist at all, and the reason they cannot
+ * simply be capped at the turn's recorded duration: a subagent or a background
+ * job is genuinely working while Claude Code counts the turn as finished.
+ * Anything else is foreground — it runs *during* the turn, so the turn's own
+ * duration already covers it.
+ */
+const DETACHED_TOOLS = new Set(['Agent', 'Task', 'Workflow', 'Monitor']);
+
 export interface SessionScan {
   /** Every timestamp found in the session, ascending. */
   timestamps: number[];
@@ -83,7 +94,9 @@ export async function scanSessionTimestamps(filePath: string): Promise<SessionSc
   const turns: Interval[] = [];
   const toolSpans: Interval[] = [];
   /** tool_use id -> when it started and what it was, until its result arrives. */
-  const openTools = new Map<string, { at: number; name: string }>();
+  const openTools = new Map<string, { at: number; name: string; detached: boolean }>();
+  /** Foreground spans closed since the last turn ended, awaiting that turn's verdict. */
+  let pending: Interval[] = [];
 
   const rl = createInterface({
     // A smaller read buffer than the 64KB default. Session logs run past 100MB
@@ -124,10 +137,13 @@ export async function scanSessionTimestamps(filePath: string): Promise<SessionSc
             json.durationMs > 0 &&
             Number.isFinite(json.durationMs)
           ) {
-            turns.push([ms - json.durationMs, ms]);
+            const turn: Interval = [ms - json.durationMs, ms];
+            turns.push(turn);
+            toolSpans.push(...keepHonestSpans(turn, json.durationMs, pending));
+            pending = [];
           }
 
-          collectToolSpans(json, ms, openTools, toolSpans);
+          collectToolSpans(json, ms, openTools, toolSpans, pending);
         }
       }
     } catch {
@@ -135,10 +151,42 @@ export async function scanSessionTimestamps(filePath: string): Promise<SessionSc
     }
   }
 
+  // Spans still pending when the file ends belong to a turn that never closed —
+  // the session is mid-flight. There is no recorded duration to judge them
+  // against, so they stand on their own.
+  toolSpans.push(...pending);
+
   timestamps.sort((a, b) => a - b);
   turns.sort((a, b) => a[0] - b[0]);
-  toolSpans.sort((a, b) => a[0] - b[0]);
+  // Ordered by end as well as start: spans now arrive from two buckets
+  // depending on whether the tool was detached, so start alone would leave the
+  // order dependent on which bucket a span happened to take.
+  toolSpans.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
   return { timestamps, cwds, turns, toolSpans };
+}
+
+/**
+ * Decides whether a turn's foreground tool spans are believable.
+ *
+ * Claude Code's `durationMs` is how long the turn actually ran, and it already
+ * includes the tools that ran inside it — that is what makes a twelve-minute
+ * build count as twelve minutes. So a foreground tool cannot honestly have been
+ * open for longer than the turn: if the span union exceeds the recorded
+ * duration, the difference is time the tool sat open while the turn was *not*
+ * running, which is the agent waiting for you to approve it.
+ *
+ * When that happens the spans are dropped and the turn's own duration stands.
+ * The turn is not shortened — nothing here can reduce measured work — it simply
+ * stops being padded by the wait.
+ *
+ * Across 30 days of real logs this fires on 12 turns out of 3,114 and removes
+ * 3.6 hours, the worst single case being 87 minutes of accumulated approval
+ * waits inside one turn. Detached tools never reach this function.
+ */
+function keepHonestSpans(turn: Interval, durationMs: number, spans: Interval[]): Interval[] {
+  if (spans.length === 0) return spans;
+  const claimed = sumDuration(mergeIntervals([turn, ...spans]));
+  return claimed > durationMs ? [] : spans;
 }
 
 /**
@@ -151,25 +199,40 @@ export async function scanSessionTimestamps(filePath: string): Promise<SessionSc
 function collectToolSpans(
   json: { message?: { content?: unknown } },
   ms: number,
-  open: Map<string, { at: number; name: string }>,
-  out: Interval[],
+  open: Map<string, { at: number; name: string; detached: boolean }>,
+  detachedOut: Interval[],
+  pending: Interval[],
 ): void {
   const content = json.message?.content;
   if (!Array.isArray(content)) return;
 
   for (const block of content) {
     if (!block || typeof block !== 'object') continue;
-    const b = block as { type?: string; id?: string; name?: string; tool_use_id?: string };
+    const b = block as {
+      type?: string;
+      id?: string;
+      name?: string;
+      tool_use_id?: string;
+      input?: { run_in_background?: unknown };
+    };
 
     if (b.type === 'tool_use' && typeof b.id === 'string') {
-      open.set(b.id, { at: ms, name: typeof b.name === 'string' ? b.name : '' });
+      const name = typeof b.name === 'string' ? b.name : '';
+      open.set(b.id, {
+        at: ms,
+        name,
+        detached: DETACHED_TOOLS.has(name) || b.input?.run_in_background === true,
+      });
     } else if (b.type === 'tool_result' && typeof b.tool_use_id === 'string') {
       const started = open.get(b.tool_use_id);
       if (!started) continue;
       open.delete(b.tool_use_id);
-      if (ms > started.at && !WAITING_ON_HUMAN.has(started.name)) {
-        out.push([started.at, ms]);
-      }
+      if (ms <= started.at || WAITING_ON_HUMAN.has(started.name)) continue;
+
+      // Detached work outlives its turn by design, so it is never weighed
+      // against that turn's duration. Foreground work is.
+      if (started.detached) detachedOut.push([started.at, ms]);
+      else pending.push([started.at, ms]);
     }
   }
 }

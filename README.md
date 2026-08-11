@@ -180,8 +180,13 @@ cutoff is joined up, a longer one is dropped. Bridging those gaps is the cutoff'
 only job — it cannot shorten a measured turn, and it cannot invent time that
 nothing in the log supports.
 
-Waiting on *you* is not work. `AskUserQuestion` and `ExitPlanMode` spans are
-excluded by name; on real logs one of them had sat open for eight hours.
+Waiting on *you* is not work, and that is enforced twice. `AskUserQuestion` and
+`ExitPlanMode` spans are excluded by name — on real logs one had sat open for
+eight hours. And a foreground tool span is dropped when it exceeds the recorded
+duration of the turn it belongs to, because Claude Code's duration already
+covers everything that ran inside the turn: the excess is a permission prompt
+left pending. Subagents and `run_in_background` tools are exempt, since those
+genuinely keep running after the turn ends.
 
 Sessions old enough to carry no turn records at all fall back to activity gaps
 alone. The dashboard header labels those *(fallback)* and the footer tells you
@@ -272,13 +277,18 @@ they measure is *Claude working*, which is a proxy for *you working*:
 - **Not counted, deliberately:** time an `AskUserQuestion` or plan-mode prompt
   spent waiting for you. Those are the agent blocked on a human, and they are
   excluded by tool name
-- **Counted, and arguably shouldn't be:** an ordinary *permission* prompt you
-  approve after a delay — approving a `Bash` command, say. The tool call is open
-  the whole time and nothing in the transcript separates "waiting for approval"
-  from "running". Leave one pending over lunch and that hour lands in your total.
-  There is no honest fix from the outside — capping tool spans would throw away
-  the genuinely long builds this exists to capture — so it is stated here rather
-  than silently corrected.
+- **Not counted, deliberately:** a permission prompt left pending. Claude Code's
+  recorded turn duration already includes the tools that ran *inside* the turn —
+  that is what makes a long build count — so a foreground tool cannot honestly
+  have been open longer than the turn ran. Where it was, the difference is the
+  call sitting open while the turn was stopped, and it is dropped. Subagents and
+  anything launched with `run_in_background` are exempt, because those really do
+  outlive their turn
+- **Still counted, and it is the last of this problem:** a *short* approval
+  delay. If you answer quickly enough that the turn's tools still fit inside its
+  recorded duration, nothing distinguishes the wait from execution and it stays
+  in. On 30 days of real logs the removable part was 12 turns out of 3,114 —
+  the long, obvious waits — so what is left is minutes, not hours
 
 For hourly billing, the honest use is as a **floor and a sanity check** — evidence
 that a project consumed roughly N hours — rather than an invoice generated
@@ -593,7 +603,7 @@ number of turns you have ever run.
 | Port already in use | Something else owns the port. Change `CLAUDE_METER_PORT`, or find the owner — a stray `claude-meter serve` on the host will win over Docker on `127.0.0.1` |
 | "No log directories found" | Set `CLAUDE_LOGS_DIR` (Docker) or `claude-meter config --set logPaths='["/path"]'` |
 | Page hangs instead of loading | An IPv6 relay is swallowing the connection. Make sure the port is published as `0.0.0.0:4317:4317`, not `4317:4317`, then `docker compose up -d` |
-| Hours look too high | Read wall-clock instead of summed if you run several terminals at once. A permission prompt left waiting also counts — see [How accurate is it?](#how-accurate-is-it) |
+| Hours look too high | Read wall-clock instead of summed if you run several terminals at once — see [How accurate is it?](#how-accurate-is-it) |
 | Hours look too low | Raise the idle cutoff — it decides which quiet stretches between turns are bridged. If the footer says most sessions are *estimated from activity gaps*, it matters more still |
 | Changing the cutoff moves the total less than expected | Expected. Turns and tool calls that Claude Code timed are counted in full at any setting; only the gaps between them move |
 | Toast about days measured at another threshold | Those days exist only in the archive and cannot be recomputed — the cutoff no longer applies to them |

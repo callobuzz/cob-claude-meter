@@ -20,7 +20,7 @@ import { Interval, TimingSource } from './time-tracker.js';
  * 3 moved from a single JSON object to newline-delimited records so the file can
  * be appended to instead of rewritten whole.
  */
-const CACHE_VERSION = 3;
+const CACHE_VERSION = 4;
 
 const CACHE_FILE = 'timeline-cache.ndjson';
 /** The pre-v3 single-object file, removed on first load so it stops taking up space. */

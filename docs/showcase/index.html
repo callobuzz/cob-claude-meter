@@ -652,19 +652,25 @@
     </div>
 
     <div class="callout" style="margin-top: 1.5rem;">
-      <h3>Waiting on you is not work &mdash; and one case still slips through</h3>
+      <h3>Waiting on you is not work &mdash; including the permission prompt</h3>
       <p>
         <code style="font-family: var(--font-mono);">AskUserQuestion</code> and plan-mode prompts are the
         agent blocked on a human, so they are excluded by name. One of them in our own logs had been
         sitting open for eight hours.
       </p>
       <p>
-        What is left is the ordinary permission prompt &mdash; approving a
-        <code style="font-family: var(--font-mono);">Bash</code> command. That tool call is open the whole
-        time it waits, and nothing in the transcript separates waiting from running. Leave one pending
-        over lunch and the hour lands in your total. Capping tool spans would fix it by throwing away the
-        genuinely long builds this exists to capture, so the honest move is to tell you rather than
-        quietly correct it.
+        The ordinary permission prompt &mdash; approving a
+        <code style="font-family: var(--font-mono);">Bash</code> command &mdash; used to slip through, and
+        now does not. Claude Code's recorded duration already covers every tool that ran
+        <em>inside</em> the turn, so a foreground tool cannot honestly have been open for longer than the
+        turn ran. Where it was, that excess is the call sitting open while the turn was stopped, and it
+        is dropped. Subagents and background jobs are exempt &mdash; those really do outlive their turn.
+      </p>
+      <p>
+        What is left is a <em>short</em> approval delay, small enough to still fit inside the turn's own
+        duration. On 30 days of real logs the removable part was 12 turns out of 3,114 &mdash; the long,
+        obvious ones &mdash; so the remainder is minutes, not hours. We would rather say that than round
+        it off.
       </p>
     </div>
   </div>

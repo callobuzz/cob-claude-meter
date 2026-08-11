@@ -260,6 +260,91 @@ describe('scanSessionTimestamps: tool spans', () => {
     expect(toolSpans).toEqual([[at(0), at(9)], [at(0), at(30)]]);
   });
 
+  /**
+   * The permission-prompt problem, and the evidence that fixes it.
+   *
+   * Claude Code's `durationMs` already includes the tools that ran inside the
+   * turn — that is what makes a long build count. So a foreground tool cannot
+   * honestly have been open longer than the turn ran: the difference is the
+   * call sitting open while the turn was stopped, waiting for approval.
+   */
+  it('drops a foreground span that outran the turn it belongs to', async () => {
+    const p = writeSession('waited.jsonl', [
+      { type: 'assistant', timestamp: iso(0), message: { content: [{ type: 'tool_use', id: 'b', name: 'Bash' }] } },
+      // Approved an hour later; the turn itself only ran two minutes.
+      { type: 'user', timestamp: iso(60), message: { content: [{ type: 'tool_result', tool_use_id: 'b' }] } },
+      { type: 'system', subtype: 'turn_duration', durationMs: 2 * MIN, timestamp: iso(60) },
+    ]);
+
+    const { toolSpans, turns } = await scanSessionTimestamps(p);
+    expect(toolSpans).toEqual([]);
+    expect(turns).toEqual([[at(58), at(60)]]);
+  });
+
+  it('keeps a foreground span that fits inside its turn', async () => {
+    const p = writeSession('honest.jsonl', [
+      { type: 'assistant', timestamp: iso(0), message: { content: [{ type: 'tool_use', id: 'b', name: 'Bash' }] } },
+      { type: 'user', timestamp: iso(12), message: { content: [{ type: 'tool_result', tool_use_id: 'b' }] } },
+      { type: 'system', subtype: 'turn_duration', durationMs: 30 * MIN, timestamp: iso(30) },
+    ]);
+
+    const { toolSpans } = await scanSessionTimestamps(p);
+    expect(toolSpans).toEqual([[at(0), at(12)]]);
+  });
+
+  it('never caps a subagent, which really does outlive its turn', async () => {
+    // The whole point of counting spans. An Agent runs unattended while Claude
+    // Code has already stopped counting the turn.
+    const p = writeSession('detached.jsonl', [
+      { type: 'assistant', timestamp: iso(0), message: { content: [{ type: 'tool_use', id: 'a', name: 'Agent' }] } },
+      { type: 'user', timestamp: iso(40), message: { content: [{ type: 'tool_result', tool_use_id: 'a' }] } },
+      { type: 'system', subtype: 'turn_duration', durationMs: MIN, timestamp: iso(40) },
+    ]);
+
+    const { toolSpans } = await scanSessionTimestamps(p);
+    expect(toolSpans).toEqual([[at(0), at(40)]]);
+  });
+
+  it('never caps a tool explicitly launched in the background', async () => {
+    const p = writeSession('bg.jsonl', [
+      { type: 'assistant', timestamp: iso(0), message: { content: [
+        { type: 'tool_use', id: 'b', name: 'Bash', input: { run_in_background: true } },
+      ] } },
+      { type: 'user', timestamp: iso(45), message: { content: [{ type: 'tool_result', tool_use_id: 'b' }] } },
+      { type: 'system', subtype: 'turn_duration', durationMs: MIN, timestamp: iso(45) },
+    ]);
+
+    const { toolSpans } = await scanSessionTimestamps(p);
+    expect(toolSpans).toEqual([[at(0), at(45)]]);
+  });
+
+  it('judges each turn separately rather than the session as a whole', async () => {
+    const p = writeSession('two-turns.jsonl', [
+      // Turn one: honest.
+      { type: 'assistant', timestamp: iso(0), message: { content: [{ type: 'tool_use', id: 'x', name: 'Bash' }] } },
+      { type: 'user', timestamp: iso(5), message: { content: [{ type: 'tool_result', tool_use_id: 'x' }] } },
+      { type: 'system', subtype: 'turn_duration', durationMs: 10 * MIN, timestamp: iso(10) },
+      // Turn two: an approval left pending.
+      { type: 'assistant', timestamp: iso(11), message: { content: [{ type: 'tool_use', id: 'y', name: 'Bash' }] } },
+      { type: 'user', timestamp: iso(90), message: { content: [{ type: 'tool_result', tool_use_id: 'y' }] } },
+      { type: 'system', subtype: 'turn_duration', durationMs: MIN, timestamp: iso(90) },
+    ]);
+
+    const { toolSpans } = await scanSessionTimestamps(p);
+    expect(toolSpans).toEqual([[at(0), at(5)]]);
+  });
+
+  it('keeps a span whose turn never closed, having nothing to judge it against', async () => {
+    // A session still in flight when the report runs.
+    const p = writeSession('midflight.jsonl', [
+      { type: 'assistant', timestamp: iso(0), message: { content: [{ type: 'tool_use', id: 'b', name: 'Bash' }] } },
+      { type: 'user', timestamp: iso(7), message: { content: [{ type: 'tool_result', tool_use_id: 'b' }] } },
+    ]);
+
+    const { toolSpans } = await scanSessionTimestamps(p);
+    expect(toolSpans).toEqual([[at(0), at(7)]]);
+  });
+
   it('excludes tools that are the agent waiting on a person', async () => {
     // Left open over lunch this is hours long, and none of it is work.
     const p = writeSession('asking.jsonl', [
