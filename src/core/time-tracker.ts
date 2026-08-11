@@ -5,17 +5,34 @@ import { basename } from 'node:path';
 /** A contiguous span of activity: [startMs, endMs]. */
 export type Interval = [number, number];
 
-/** Gaps longer than this are treated as idle time and dropped. */
+/**
+ * How long a silence has to run before it counts as a break.
+ *
+ * A silence means no log entry at all — no turn in progress, no tool reporting
+ * back, no prompt being sent. Below this, the stretch joins the work either
+ * side of it; above it, it is dropped.
+ */
 export const DEFAULT_IDLE_SECONDS = 300;
 
 /**
- * How a session's working time was established.
+ * What evidence a session's total rests on.
  *
- * `turns` means Claude Code recorded how long each turn took and we used those
- * numbers. `gaps` means it did not, so the time was inferred from how closely
- * log entries sit together — an estimate governed by the idle threshold.
+ * `turns` means Claude Code recorded turn durations, so the total is anchored
+ * to measured spans and only the stretches between them depend on the
+ * threshold. `gaps` means it recorded none, so the total is inferred from how
+ * closely log entries sit together.
  */
 export type TimingSource = 'turns' | 'gaps';
+
+/**
+ * Tools whose elapsed time is the agent waiting on a person, not working.
+ *
+ * Everything else — a build, a subagent, a background job — is the agent
+ * blocked on its own work, which is time spent. These two block on you. They
+ * are worth naming explicitly because they are long: across 60 days of real
+ * logs `AskUserQuestion` spans totalled 35 hours, one of them lasting 8.
+ */
+const WAITING_ON_HUMAN = new Set(['AskUserQuestion', 'ExitPlanMode']);
 
 export interface SessionScan {
   /** Every timestamp found in the session, ascending. */
@@ -28,6 +45,18 @@ export interface SessionScan {
    * inside a single build is 40 minutes here.
    */
   turns: Interval[];
+  /**
+   * One interval per tool call, from its `tool_use` to its matching
+   * `tool_result`.
+   *
+   * This is how work that leaves the main transcript still gets counted. A
+   * subagent writes to its own file under `<session>/subagents/`, but the
+   * parent records the `Agent` call that spawned it and the result that came
+   * back, so the span is here without reading a second set of files — which
+   * matters, since those transcripts are comparable in size to the sessions
+   * themselves. Background jobs and long builds work the same way.
+   */
+  toolSpans: Interval[];
 }
 
 export interface SessionTimeline {
@@ -52,6 +81,9 @@ export async function scanSessionTimestamps(filePath: string): Promise<SessionSc
   const timestamps: number[] = [];
   const cwds = new Map<string, number>();
   const turns: Interval[] = [];
+  const toolSpans: Interval[] = [];
+  /** tool_use id -> when it started and what it was, until its result arrives. */
+  const openTools = new Map<string, { at: number; name: string }>();
 
   const rl = createInterface({
     // A smaller read buffer than the 64KB default. Session logs run past 100MB
@@ -65,10 +97,11 @@ export async function scanSessionTimestamps(filePath: string): Promise<SessionSc
 
   for await (const line of rl) {
     if (!line) continue;
-    // Cheap prefilter: session logs reach 100MB+ and most lines carry neither field.
+    // Cheap prefilter: session logs reach 100MB+ and most lines carry none of these.
     const hasTimestamp = line.indexOf('"timestamp"') !== -1;
     const hasCwd = line.indexOf('"cwd"') !== -1;
-    if (!hasTimestamp && !hasCwd) continue;
+    const hasTool = line.indexOf('"tool_use') !== -1 || line.indexOf('"tool_result"') !== -1;
+    if (!hasTimestamp && !hasCwd && !hasTool) continue;
 
     try {
       const json = JSON.parse(line);
@@ -93,6 +126,8 @@ export async function scanSessionTimestamps(filePath: string): Promise<SessionSc
           ) {
             turns.push([ms - json.durationMs, ms]);
           }
+
+          collectToolSpans(json, ms, openTools, toolSpans);
         }
       }
     } catch {
@@ -102,29 +137,105 @@ export async function scanSessionTimestamps(filePath: string): Promise<SessionSc
 
   timestamps.sort((a, b) => a - b);
   turns.sort((a, b) => a[0] - b[0]);
-  return { timestamps, cwds, turns };
+  toolSpans.sort((a, b) => a[0] - b[0]);
+  return { timestamps, cwds, turns, toolSpans };
+}
+
+/**
+ * Pairs a `tool_use` with the `tool_result` that echoes its id.
+ *
+ * Tools still open when the file ends are dropped: an unfinished call has no
+ * measured end, and guessing one would invent time. In practice this is rare —
+ * across 60 days of logs every one of 71,870 results matched an opener.
+ */
+function collectToolSpans(
+  json: { message?: { content?: unknown } },
+  ms: number,
+  open: Map<string, { at: number; name: string }>,
+  out: Interval[],
+): void {
+  const content = json.message?.content;
+  if (!Array.isArray(content)) return;
+
+  for (const block of content) {
+    if (!block || typeof block !== 'object') continue;
+    const b = block as { type?: string; id?: string; name?: string; tool_use_id?: string };
+
+    if (b.type === 'tool_use' && typeof b.id === 'string') {
+      open.set(b.id, { at: ms, name: typeof b.name === 'string' ? b.name : '' });
+    } else if (b.type === 'tool_result' && typeof b.tool_use_id === 'string') {
+      const started = open.get(b.tool_use_id);
+      if (!started) continue;
+      open.delete(b.tool_use_id);
+      if (ms > started.at && !WAITING_ON_HUMAN.has(started.name)) {
+        out.push([started.at, ms]);
+      }
+    }
+  }
 }
 
 /**
  * Picks the working intervals for one session.
  *
- * Prefers Claude Code's recorded turn durations, which measure the stretch the
- * agent was actually engaged — a twelve-minute `npm run` inside a turn counts
- * in full, and the minutes you spend reading the reply afterwards do not count
- * at all. Only when a session carries no such records does it fall back to
- * inferring activity from the spacing of log entries.
+ * Idle means nothing was happening: nothing running, nothing being typed.
+ * Everything else is work. So a moment counts if any of three kinds of evidence
+ * covers it:
  *
- * Turns are merged because queued prompts can produce overlapping records, and
- * counting the same minute twice within one session would inflate the total.
+ * - a recorded turn duration, which covers a long silent tool run inside a turn;
+ * - a tool span, which covers a subagent or background job whose own output
+ *   never reaches this file;
+ * - log activity either side, where consecutive entries sit closer together
+ *   than the idle threshold — compaction, queued prompts, and you typing.
+ *
+ * None of the three is sufficient alone. Turn records miss real work: across 60
+ * days of logs, 5.1% of assistant messages and tool results fall outside every
+ * turn record, worth about 18 hours. Activity alone misses the silent build.
+ * Tool spans alone miss the thinking between calls.
+ *
+ * Merging is what makes combining them safe — overlapping evidence collapses
+ * instead of counting the same minute twice, which is also why a subagent
+ * running inside its parent turn adds nothing.
  */
 export function buildSessionIntervals(
   scan: SessionScan,
   idleSeconds: number = DEFAULT_IDLE_SECONDS,
 ): { intervals: Interval[]; source: TimingSource } {
-  if (scan.turns.length > 0) {
-    return { intervals: mergeIntervals(scan.turns), source: 'turns' };
+  const activity = buildIntervals(scan.timestamps, idleSeconds);
+  const evidence = mergeIntervals([...scan.turns, ...scan.toolSpans, ...activity]);
+
+  return {
+    intervals: bridgeGaps(evidence, idleSeconds),
+    source: scan.turns.length > 0 ? 'turns' : 'gaps',
+  };
+}
+
+/**
+ * Joins intervals separated by less than the idle threshold.
+ *
+ * The threshold has exactly one job: decide how long a silence has to run
+ * before it stops being part of the work either side of it. Applying it to the
+ * merged evidence rather than to raw timestamps is what makes that consistent —
+ * otherwise a minute between a turn ending and a subagent starting would be
+ * counted or dropped depending on whether a log line happened to land in it.
+ *
+ * Expects merged input, so the intervals are sorted and non-overlapping.
+ */
+export function bridgeGaps(intervals: Interval[], idleSeconds: number): Interval[] {
+  if (intervals.length === 0) return [];
+  const idleMs = idleSeconds * 1000;
+  const out: Interval[] = [[intervals[0][0], intervals[0][1]]];
+
+  for (let i = 1; i < intervals.length; i++) {
+    const [a, b] = intervals[i];
+    const last = out[out.length - 1];
+    if (a - last[1] <= idleMs) {
+      if (b > last[1]) last[1] = b;
+    } else {
+      out.push([a, b]);
+    }
   }
-  return { intervals: buildIntervals(scan.timestamps, idleSeconds), source: 'gaps' };
+
+  return out;
 }
 
 /**

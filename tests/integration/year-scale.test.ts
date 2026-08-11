@@ -31,8 +31,14 @@ const DAYS = 365;
 const PROJECTS = ['alpha', 'beta'];
 const TURNS_PER_SESSION = 4;
 const TURN_MS = 15 * MIN;
-/** Every session is deliberately identical in shape so the total is exact. */
-const PER_SESSION_MS = TURNS_PER_SESSION * TURN_MS;
+/**
+ * Every session is deliberately identical in shape so the total is exact.
+ *
+ * Four measured turns, plus the three one-minute gaps between them. Those gaps
+ * are below the idle threshold and carry log entries either side, so they are
+ * part of one continuous stretch of work rather than three breaks.
+ */
+const PER_SESSION_MS = TURNS_PER_SESSION * TURN_MS + (TURNS_PER_SESSION - 1) * MIN;
 const TOTAL_SESSIONS = DAYS * PROJECTS.length;
 
 let logRoot: string;
@@ -183,11 +189,25 @@ describe('a year of history', () => {
     expect(again.ms).toBeLessThan(Math.max(firstScanMs, 1000));
   });
 
-  it('is not slowed down by changing the idle threshold', async () => {
-    // Turn-measured entries are threshold-independent, so this must stay a
-    // cache hit rather than forcing a full rescan of the year.
+  it('recomputes the year when the idle threshold changes', async () => {
+    // The threshold decides whether the stretch between two measured turns is
+    // one piece of work or two, so it applies to turn-measured sessions as much
+    // as to inferred ones. Reusing those entries across a change would serve the
+    // previous setting's numbers, which is fast and wrong.
     const { body } = await get('/api/report?range=all&idle=1800');
-    expect(body.scan.filesFromCache).toBe(TOTAL_SESSIONS);
+    expect(body.scan.filesFromCache).toBe(0);
+
+    // Recomputed, and for this fixture the answer is the same: every gap in it
+    // is one minute, below both thresholds. The rescan is the point, not a
+    // different total.
+    expect(body.totals.totalMs).toBe(TOTAL_SESSIONS * PER_SESSION_MS);
+  });
+
+  it('drops the between-turn gaps once the threshold falls below them', async () => {
+    // At 30 seconds the one-minute gaps become breaks, so only the measured
+    // turns survive. This is what proves the setting is actually applied.
+    const { body } = await get('/api/report?range=all&idle=30');
+    expect(body.totals.totalMs).toBe(TOTAL_SESSIONS * TURNS_PER_SESSION * TURN_MS);
   });
 });
 
@@ -253,13 +273,16 @@ describe('concurrent load', () => {
     // own scan of every session log, competing for the same CPU; over a large
     // log directory that starved the event loop and the server stopped
     // answering anything until they finished.
+    //
+    // The odd idle value is just a cache key no other test uses. It sits above
+    // the fixture's one-minute gaps so the expected total is the ordinary one.
     const started = Date.now();
     const responses = await Promise.all([
-      get('/api/report?range=all&idle=42'),
-      get('/api/report?range=all&idle=42'),
-      get('/api/report?range=all&idle=42'),
-      get('/api/report?range=all&idle=42'),
-      get('/api/report?range=all&idle=42'),
+      get('/api/report?range=all&idle=301'),
+      get('/api/report?range=all&idle=301'),
+      get('/api/report?range=all&idle=301'),
+      get('/api/report?range=all&idle=301'),
+      get('/api/report?range=all&idle=301'),
     ]);
     const elapsed = Date.now() - started;
 

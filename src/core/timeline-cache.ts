@@ -153,10 +153,11 @@ export class TimelineCache {
    * Returns the cached timeline if the file is unchanged and the entry still
    * applies.
    *
-   * Turn-measured entries are threshold-independent — the numbers come from the
-   * log, not from a cutoff — so changing the idle setting keeps them valid.
-   * Only gap-inferred entries have to be recomputed, which is what stopped a
-   * threshold change from triggering a full cold rescan of every session.
+   * Every entry depends on the threshold, turn-measured ones included: the
+   * stretches *between* measured spans are joined or split by it, so a total
+   * computed at 5 minutes is not valid at 10. An earlier version reused
+   * turn-measured entries across a change, which made switching the setting
+   * instant by serving the previous setting's numbers.
    */
   get(filePath: string, idleSeconds: number): CachedTimeline | null {
     const entry = this.sessions[filePath];
@@ -164,7 +165,7 @@ export class TimelineCache {
       this.misses++;
       return null;
     }
-    if (entry.source !== 'turns' && entry.idleSeconds !== idleSeconds) {
+    if (entry.idleSeconds !== idleSeconds) {
       this.misses++;
       return null;
     }

@@ -15,7 +15,7 @@ const at = (minutes: number) => base + minutes * MIN;
 const iso = (minutes: number) => new Date(at(minutes)).toISOString();
 
 function scan(partial: Partial<SessionScan>): SessionScan {
-  return { timestamps: [], cwds: new Map(), turns: [], ...partial };
+  return { timestamps: [], cwds: new Map(), turns: [], toolSpans: [], ...partial };
 }
 
 let dir: string;
@@ -112,17 +112,22 @@ describe('buildSessionIntervals', () => {
     expect(sumDuration(result.intervals)).toBe(2 * MIN);
   });
 
-  it('ignores the idle threshold entirely when turn records exist', () => {
+  it('never lets the threshold shrink measured time', () => {
     const withTurns = scan({ turns: [[at(0), at(45)]], timestamps: [at(0), at(45)] });
 
-    // A 30s threshold would demolish a gap-inferred result; measured time stands.
+    // The threshold governs the stretches *between* measured spans. It can add
+    // to a total by joining two of them, but a measured 45 minutes is 45
+    // minutes however tight the cutoff is set.
     expect(sumDuration(buildSessionIntervals(withTurns, 30).intervals)).toBe(45 * MIN);
     expect(sumDuration(buildSessionIntervals(withTurns, 3600).intervals)).toBe(45 * MIN);
   });
 });
 
 describe('TimelineCache', () => {
-  it('keeps turn-measured entries valid across an idle-threshold change', () => {
+  it('invalidates turn-measured entries when the threshold changes', () => {
+    // The threshold decides whether the stretch between two measured turns is
+    // one piece of work or two, so turn-measured totals depend on it as well.
+    // Reusing these across a change served the previous setting's numbers.
     const p = writeSession('d.jsonl', [{ type: 'user', timestamp: iso(0) }]);
     const cache = new TimelineCache(dir);
 
@@ -136,10 +141,10 @@ describe('TimelineCache', () => {
     });
 
     expect(cache.get(p, 300)).not.toBeNull();
-    expect(cache.get(p, 900)).not.toBeNull(); // threshold-independent
+    expect(cache.get(p, 900)).toBeNull();
   });
 
-  it('still invalidates gap-inferred entries when the threshold changes', () => {
+  it('also invalidates gap-inferred entries when the threshold changes', () => {
     const p = writeSession('e.jsonl', [{ type: 'user', timestamp: iso(0) }]);
     const cache = new TimelineCache(dir);
 
@@ -221,5 +226,116 @@ describe('TimelineCache', () => {
 
     expect(removed).toBe(1);
     expect(readdirSync(dir).filter(f => f.endsWith('.tmp'))).toHaveLength(0);
+  });
+});
+
+describe('scanSessionTimestamps: tool spans', () => {
+  /**
+   * A subagent writes its own transcript under `<session>/subagents/`, which
+   * this tool never reads — those files are comparable in size to the sessions
+   * themselves. The parent records the Agent call and the result that came
+   * back, so the span is recoverable without reading them.
+   */
+  it('pairs a tool_use with the tool_result that echoes its id', async () => {
+    const p = writeSession('spans.jsonl', [
+      { type: 'assistant', timestamp: iso(0), message: { content: [{ type: 'tool_use', id: 't1', name: 'Agent' }] } },
+      { type: 'user', timestamp: iso(20), message: { content: [{ type: 'tool_result', tool_use_id: 't1' }] } },
+    ]);
+
+    const { toolSpans } = await scanSessionTimestamps(p);
+    expect(toolSpans).toEqual([[at(0), at(20)]]);
+  });
+
+  it('handles several tools open at once, finishing out of order', async () => {
+    const p = writeSession('parallel.jsonl', [
+      { type: 'assistant', timestamp: iso(0), message: { content: [
+        { type: 'tool_use', id: 'a', name: 'Agent' },
+        { type: 'tool_use', id: 'b', name: 'Bash' },
+      ] } },
+      { type: 'user', timestamp: iso(9), message: { content: [{ type: 'tool_result', tool_use_id: 'b' }] } },
+      { type: 'user', timestamp: iso(30), message: { content: [{ type: 'tool_result', tool_use_id: 'a' }] } },
+    ]);
+
+    const { toolSpans } = await scanSessionTimestamps(p);
+    expect(toolSpans).toEqual([[at(0), at(9)], [at(0), at(30)]]);
+  });
+
+  it('excludes tools that are the agent waiting on a person', async () => {
+    // Left open over lunch this is hours long, and none of it is work.
+    const p = writeSession('asking.jsonl', [
+      { type: 'assistant', timestamp: iso(0), message: { content: [{ type: 'tool_use', id: 'q', name: 'AskUserQuestion' }] } },
+      { type: 'user', timestamp: iso(240), message: { content: [{ type: 'tool_result', tool_use_id: 'q' }] } },
+    ]);
+
+    const { toolSpans } = await scanSessionTimestamps(p);
+    expect(toolSpans).toEqual([]);
+  });
+
+  it('drops a tool that never returned rather than inventing an end', async () => {
+    const p = writeSession('orphan.jsonl', [
+      { type: 'assistant', timestamp: iso(0), message: { content: [{ type: 'tool_use', id: 'x', name: 'Bash' }] } },
+    ]);
+
+    const { toolSpans } = await scanSessionTimestamps(p);
+    expect(toolSpans).toEqual([]);
+  });
+
+  it('ignores a result whose opener is missing', async () => {
+    const p = writeSession('stray.jsonl', [
+      { type: 'user', timestamp: iso(5), message: { content: [{ type: 'tool_result', tool_use_id: 'gone' }] } },
+    ]);
+
+    const { toolSpans } = await scanSessionTimestamps(p);
+    expect(toolSpans).toEqual([]);
+  });
+});
+
+describe('buildSessionIntervals: combining the evidence', () => {
+  it('counts a subagent span that no turn record covers', async () => {
+    const s = scan({
+      timestamps: [at(0), at(40)],
+      turns: [[at(0), at(5)]],
+      toolSpans: [[at(6), at(40)]],
+    });
+
+    const { intervals, source } = buildSessionIntervals(s, 300);
+    expect(source).toBe('turns');
+    // 0-5 measured, 6-40 the subagent, and the one-minute gap between them
+    // bridged because entries sit either side of it.
+    expect(sumDuration(intervals)).toBe(40 * MIN);
+  });
+
+  it('does not double-count a span that sits inside its turn', async () => {
+    const s = scan({
+      timestamps: [at(0), at(30)],
+      turns: [[at(0), at(30)]],
+      toolSpans: [[at(2), at(28)]],
+    });
+
+    expect(sumDuration(buildSessionIntervals(s, 300).intervals)).toBe(30 * MIN);
+  });
+
+  it('splits at a silence longer than the threshold', async () => {
+    const s = scan({
+      timestamps: [at(0), at(10), at(90), at(100)],
+      turns: [[at(0), at(10)], [at(90), at(100)]],
+    });
+
+    // 80 minutes of nothing between them: two pieces of work, not one.
+    expect(sumDuration(buildSessionIntervals(s, 300).intervals)).toBe(20 * MIN);
+  });
+
+  it('joins two turns across a gap below the threshold', async () => {
+    const s = scan({
+      timestamps: [at(0), at(10), at(12), at(20)],
+      turns: [[at(0), at(10)], [at(12), at(20)]],
+    });
+
+    expect(sumDuration(buildSessionIntervals(s, 300).intervals)).toBe(20 * MIN);
+  });
+
+  it('reports gaps as the source when only tool spans exist', async () => {
+    const s = scan({ timestamps: [at(0), at(8)], toolSpans: [[at(0), at(8)]] });
+    expect(buildSessionIntervals(s, 300).source).toBe('gaps');
   });
 });
