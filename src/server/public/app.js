@@ -75,6 +75,32 @@ function monthKey(dayKey) {
   return dayKey.slice(0, 7);
 }
 
+/* Local-time day helpers. Local, never UTC: a boundary drawn in UTC would move
+   evening work onto the wrong date for anyone not sitting on the meridian. */
+
+function dayKeyToMs(dayKey) {
+  const [y, m, d] = dayKey.split('-').map(Number);
+  return new Date(y, m - 1, d).getTime();
+}
+
+function startOfLocalDay(ms) {
+  const d = new Date(ms);
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+}
+
+/** Adds days via the date parts so DST transitions don't drift the boundary. */
+function addLocalDays(ms, n) {
+  const d = new Date(ms);
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate() + n).getTime();
+}
+
+function localDayKey(ms) {
+  const d = new Date(ms);
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${d.getFullYear()}-${mm}-${dd}`;
+}
+
 /* ---------- wall-clock ----------
    Wall-clock is a union, so it cannot be summed from per-project scalars: it
    needs the underlying intervals, and a filtered view needs them re-folded.
@@ -84,6 +110,56 @@ function monthKey(dayKey) {
    response grew with the entire history and the interval maths existed twice —
    once here, once in TypeScript — with no way to import one from the other.
    Now the browser asks for the numbers it needs and holds no timestamps. */
+
+/* ---------- timeline month accordion ---------- */
+
+/** Month keys currently folded shut. */
+const collapsedMonths = new Set();
+/** The month set these defaults were chosen for, so a range change re-picks. */
+let collapsedSignature = null;
+
+/**
+ * Applies the default open/closed state when the visible months change.
+ *
+ * Everything but the newest month starts closed. Opening a year of history to
+ * 365 day rows buries the recent work the dashboard is usually opened to check,
+ * and the months below it are one click away. Choices already made are kept as
+ * long as the same months stay in view.
+ */
+function syncCollapsedMonths(monthKeys) {
+  const signature = monthKeys.join(',');
+  if (signature === collapsedSignature) return;
+
+  collapsedSignature = signature;
+  collapsedMonths.clear();
+  const newest = monthKeys.slice().sort().pop();
+  for (const key of monthKeys) {
+    if (key !== newest) collapsedMonths.add(key);
+  }
+}
+
+function monthHeadingRow(monthKeyValue, totals) {
+  const [y, m] = monthKeyValue.split('-');
+  const name = new Date(Number(y), Number(m) - 1, 1)
+    .toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+  const collapsed = collapsedMonths.has(monthKeyValue);
+  const dayWord = totals.activeDays === 1 ? 'day' : 'days';
+
+  return `
+    <tr class="month-head${collapsed ? ' is-collapsed' : ''}" data-month="${esc(monthKeyValue)}">
+      <td>
+        <div class="proj-name">
+          <span class="caret">&#9656;</span>
+          <strong>${esc(name)}</strong>
+          <span class="muted">${totals.activeDays} active ${dayWord}</span>
+        </div>
+      </td>
+      <td></td>
+      <td class="num hours">${fmtHours(totals.totalMs)}</td>
+      <td class="num hours-alt">${fmtHours(totals.wallMs)}</td>
+      <td class="num dim"></td>
+    </tr>`;
+}
 
 /** Wall-clock for the current selection, keyed so repeat renders don't refetch. */
 let wallClock = { key: null, totalMs: 0, buckets: {} };
@@ -431,6 +507,27 @@ function renderTimeline() {
     bucket.days.add(day.day);
   }
 
+  // Fill in the dates nothing happened on.
+  //
+  // Buckets above come from report.days, which only lists dates with activity.
+  // A day off therefore vanished from the timeline entirely and the sequence
+  // jumped — 09 straight to 11 — which reads as a rendering fault rather than
+  // as a day not worked. A filtered-out day already showed as zero, so the two
+  // cases looked inconsistent as well.
+  //
+  // The span runs from the first date with data to today, clipped to the
+  // selected range: starting at the range's own start would emit four years of
+  // empty rows for "all time", and running to its end would invent dates in
+  // the future.
+  const spanStart = Math.max(report.range.start, dayKeyToMs(report.days[0].day));
+  const spanEnd = Math.min(report.range.end, Date.now());
+  for (let cursor = startOfLocalDay(spanStart); cursor <= spanEnd; cursor = addLocalDays(cursor, 1)) {
+    const key = bucketOf(localDayKey(cursor));
+    if (!buckets.has(key)) {
+      buckets.set(key, { key, totalMs: 0, wallMs: 0, days: new Set(), projects: new Map() });
+    }
+  }
+
   // Wall-clock per bucket comes back already folded for this exact selection.
   // Summing per-day wall-clock here would be wrong for week/month, where a
   // session spanning the boundary belongs to one union, not two.
@@ -439,14 +536,58 @@ function renderTimeline() {
   }
 
   const rows = [...buckets.values()].sort((a, b) => (a.key < b.key ? 1 : -1));
-  if (rows.length === 0) {
+  // Gap-filling means there are always rows, so emptiness is now about hours,
+  // not row count — otherwise a filter matching nothing would render a wall of
+  // zeros instead of saying so.
+  if (!rows.some((r) => r.totalMs > 0)) {
     panel.innerHTML = `<div class="empty"><strong>No activity matches the filters</strong>Clear a filter to see the timeline.</div>`;
     return;
   }
 
   const max = Math.max(...rows.map((r) => r.totalMs), 1);
 
+  // Month accordion, for day rows only.
+  //
+  // A wide range is a long undifferentiated list — a year is 365 rows — so day
+  // rows are collected under a collapsible month heading. Weeks and months are
+  // already coarse enough to read straight through, and a single-month range
+  // gains nothing from a heading that would contain everything, so both skip it.
+  const monthsInView = state.groupBy === 'day'
+    ? [...new Set(rows.map((r) => monthKey(r.key)))]
+    : [];
+  const useAccordion = monthsInView.length > 1;
+  if (useAccordion) syncCollapsedMonths(monthsInView);
+
+  const monthTotals = new Map();
+  if (useAccordion) {
+    for (const r of rows) {
+      const key = monthKey(r.key);
+      const acc = monthTotals.get(key) ?? { totalMs: 0, wallMs: 0, activeDays: 0 };
+      acc.totalMs += r.totalMs;
+      acc.wallMs += r.wallMs;
+      if (r.totalMs > 0) acc.activeDays++;
+      monthTotals.set(key, acc);
+    }
+  }
+
+  let lastMonth = null;
+
   const body = rows.map((r) => {
+    let heading = '';
+    if (useAccordion) {
+      const mk = monthKey(r.key);
+      if (mk !== lastMonth) {
+        lastMonth = mk;
+        heading = monthHeadingRow(mk, monthTotals.get(mk));
+      }
+      // A collapsed month renders its heading and nothing else.
+      if (collapsedMonths.has(mk)) return heading;
+    }
+
+    return heading + dayRow(r);
+  }).join('');
+
+  function dayRow(r) {
     const pct = (r.totalMs / max) * 100;
     const isOpen = openDay === r.key;
 
@@ -471,7 +612,7 @@ function renderTimeline() {
         <td><div class="proj-name"><span class="caret">&#9656;</span>${label}</div></td>
         <td class="bar-cell">
           <div class="bar-track" data-tip="${esc(r.key)}|${fmtHours(r.totalMs)}|${projects.length}">
-            <div class="bar-fill" style="width:${pct.toFixed(2)}%"></div>
+            <div class="bar-fill${r.totalMs === 0 ? ' is-zero' : ''}" style="width:${pct.toFixed(2)}%"></div>
           </div>
         </td>
         <td class="num hours">${fmtHours(r.totalMs)}</td>
@@ -494,7 +635,7 @@ function renderTimeline() {
         <ul class="day-projects">${inner}</ul>
       </div>
     </div></td></tr>`;
-  }).join('');
+  }
 
   panel.innerHTML = `
     <div class="table-wrap"><div class="scroll-x"><table>
@@ -700,6 +841,16 @@ function wire() {
 
   $('panel-timeline').addEventListener('click', (e) => {
     if (e.target.closest('.detail')) return;
+
+    const monthHead = e.target.closest('tr.month-head');
+    if (monthHead) {
+      const key = monthHead.dataset.month;
+      if (collapsedMonths.has(key)) collapsedMonths.delete(key);
+      else collapsedMonths.add(key);
+      renderTimeline();
+      return;
+    }
+
     const row = e.target.closest('tr.row');
     if (!row) return;
     openDay = openDay === row.dataset.day ? null : row.dataset.day;

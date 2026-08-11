@@ -564,6 +564,23 @@ td { padding: 13px 16px; vertical-align: middle; }
 tr.row:hover .caret { color: var(--text-secondary); }
 tr.is-open .caret { transform: rotate(90deg); color: var(--data-1-lift); }
 
+/* Month accordion heading in the timeline.
+   Sits above its day rows and has to read as a divider rather than as another
+   data row, so it gets a tinted band and a rule above instead of the usual
+   row treatment. Expanded is the caret-down state, matching tr.is-open. */
+tr.month-head {
+  cursor: pointer;
+  background: var(--surface-2, rgba(255, 255, 255, 0.03));
+  border-top: 1px solid var(--accent-line, rgba(255, 255, 255, 0.09));
+}
+tr.month-head:first-child { border-top: none; }
+tr.month-head:hover { background: var(--surface-3, rgba(255, 255, 255, 0.055)); }
+tr.month-head td { padding-top: 11px; padding-bottom: 11px; }
+tr.month-head strong { font-size: 13.5px; letter-spacing: 0.01em; }
+tr.month-head .muted { font-size: 11.5px; margin-left: 8px; }
+tr.month-head .caret { transform: rotate(90deg); color: var(--data-1-lift); }
+tr.month-head.is-collapsed .caret { transform: rotate(0deg); color: var(--text-muted); }
+
 .hours { font-size: 14px; font-weight: 500; font-variant-numeric: tabular-nums; }
 .hours-alt { color: var(--data-2-lift); font-size: 12.5px; }
 .muted { color: var(--text-muted); }
@@ -587,6 +604,9 @@ tr.is-open .caret { transform: rotate(90deg); color: var(--data-1-lift); }
   min-width: 3px;
 }
 .bar-fill.alt { background: var(--data-2); box-shadow: var(--glow-iolite); }
+/* The 3px floor above keeps a tiny value visible, but a day with no work at all
+   now gets a row too, and a sliver there reads as "a little" instead of "none". */
+.bar-fill.is-zero { min-width: 0; box-shadow: none; }
 
 /* chips */
 .tagchip, .clientchip {
