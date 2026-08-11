@@ -5,7 +5,16 @@ services:
     container_name: claude-meter
     restart: unless-stopped
     ports:
-      - "${CLAUDE_METER_PORT:-4317}:4317"
+      # Bound to IPv4 explicitly rather than "4317:4317".
+      #
+      # The bare form publishes on both stacks, and on Docker Desktop the IPv6
+      # side is served by a wslrelay process that accepts the connection and
+      # then never answers. Browsers and curl resolve localhost to ::1 first, so
+      # the dashboard hangs until it times out instead of failing over to IPv4.
+      # With no IPv6 listener the ::1 attempt is refused instantly and the
+      # client falls through to 127.0.0.1. 0.0.0.0 keeps it reachable from the
+      # LAN, exactly as before.
+      - "0.0.0.0:${CLAUDE_METER_PORT:-4317}:4317"
     volumes:
       # Session logs — read-only, the dashboard never writes here.
       - "${CLAUDE_LOGS_DIR:-${USERPROFILE:-$HOME}/.claude/projects}:/logs:ro"
