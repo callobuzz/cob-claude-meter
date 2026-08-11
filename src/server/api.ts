@@ -1,6 +1,7 @@
 import { DateRangeLabel, getDateRange } from '../core/date-ranges.js';
 import { ProjectTime, TimeReport, buildTimeReport } from '../core/time-aggregator.js';
 import { TimelineCache } from '../core/timeline-cache.js';
+import { DayArchive } from '../core/day-archive.js';
 import { ProjectMeta, TagStore } from '../core/tag-store.js';
 import { DEFAULT_IDLE_SECONDS } from '../core/time-tracker.js';
 import { GroupBy, WallClockRequest, computeWallClock } from '../core/wall-clock.js';
@@ -9,6 +10,8 @@ export interface ApiContext {
   logPaths: string[];
   tags: TagStore;
   cache: TimelineCache;
+  /** Durable history. Optional: without it the dashboard sees only live logs. */
+  archive?: DayArchive;
   /** Reports are memoised for this long so rapid filter changes do not rescan. */
   reportTtlMs: number;
 }
@@ -133,6 +136,7 @@ async function getReport(
     start,
     end,
     cache: ctx.cache,
+    archive: ctx.archive,
   })
     .then(report => {
       memo = { key, builtAt: Date.now(), report };

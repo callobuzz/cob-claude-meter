@@ -11,8 +11,10 @@ import {
   scanSessionTimestamps,
   splitIntervalByDay,
   sumDuration,
+  toLocalDayKey,
 } from './time-tracker.js';
 import { TimelineCache } from './timeline-cache.js';
+import { ALGO_VERSION, ArchivedDay, DayArchive, dayFullyInRange } from './day-archive.js';
 
 export interface SessionSummary {
   id: string;
@@ -75,6 +77,11 @@ export interface TimeReport {
     sessionsMeasured: number;
     /** Sessions with no turn records, whose time was inferred from entry spacing. */
     sessionsInferred: number;
+    /**
+     * Project-days served from the archive because the logs no longer produce
+     * them — history that would otherwise have vanished with the transcripts.
+     */
+    daysRestored: number;
     durationMs: number;
   };
   /** Non-fatal problems worth surfacing — a skipped log means undercounted hours. */
@@ -87,6 +94,12 @@ export interface TimeReportOptions {
   start?: number;
   end?: number;
   cache?: TimelineCache;
+  /**
+   * Durable record of finished days. Supplied, the report writes every complete
+   * day it computed and reads back any day whose logs have since been deleted.
+   * Omitted, the report is exactly as before — logs only.
+   */
+  archive?: DayArchive;
   onProgress?: (done: number, total: number, label: string) => void;
   /** Override the session reader. Exists so the failure path can be tested. */
   scanner?: (filePath: string) => Promise<SessionScan>;
@@ -175,6 +188,69 @@ function findProjectDirs(logRoot: string): string[] {
 function leafName(projectPath: string): string {
   const segments = projectPath.split(/[\\/]+/).filter(Boolean);
   return segments[segments.length - 1] ?? projectPath;
+}
+
+/**
+ * One project's running totals, before it becomes a ProjectTime.
+ *
+ * Summed time is carried separately from the intervals rather than re-derived
+ * from them, because archived days arrive as a merged union plus a summed
+ * total. Two overlapping sessions sum to more than their union, and only the
+ * archive still knows by how much once the logs are gone.
+ */
+interface ProjectAccum {
+  path: string;
+  name: string;
+  summedMs: number;
+  intervals: Interval[];
+  sessions: SessionSummary[];
+  /** Sessions counted from archived days, whose per-session detail is not kept. */
+  archivedSessions: number;
+  byDay: Record<string, number>;
+  firstSeen: number | null;
+  lastSeen: number | null;
+}
+
+interface DayBucket {
+  summed: number;
+  intervals: Interval[];
+  byProject: Map<string, number>;
+}
+
+function addToDay(
+  dayTotals: Map<string, DayBucket>,
+  day: string,
+  projectPath: string,
+  ms: number,
+  intervals: Interval[],
+): void {
+  let bucket = dayTotals.get(day);
+  if (!bucket) {
+    bucket = { summed: 0, intervals: [], byProject: new Map() };
+    dayTotals.set(day, bucket);
+  }
+  bucket.summed += ms;
+  bucket.intervals.push(...intervals);
+  bucket.byProject.set(projectPath, (bucket.byProject.get(projectPath) ?? 0) + ms);
+}
+
+/**
+ * True when writing `fresh` over `existing` would lose recorded time.
+ *
+ * Claude Code deletes transcripts once they age past `cleanupPeriodDays`, and
+ * it deletes them one session at a time — so a day at the edge of the retention
+ * window recomputes smaller and smaller as its sessions disappear. Without this
+ * the archive would faithfully record that decay and the history it exists to
+ * protect would drain away silently.
+ *
+ * Only a like-for-like comparison counts. A different threshold or a change to
+ * the timing rules is a legitimate reason for the number to move in either
+ * direction, so those always overwrite.
+ */
+function wouldErode(existing: ArchivedDay | null, fresh: ArchivedDay): boolean {
+  if (!existing) return false;
+  if (existing.idleSeconds !== fresh.idleSeconds || existing.algo !== fresh.algo) return false;
+  return fresh.totalMs < existing.totalMs;
 }
 
 export async function buildTimeReport(options: TimeReportOptions): Promise<TimeReport> {
@@ -301,70 +377,170 @@ export async function buildTimeReport(options: TimeReportOptions): Promise<TimeR
   }
 
   // 4. Roll up per project and per day.
-  const projects: ProjectTime[] = [];
-  const dayTotals = new Map<string, { summed: number; intervals: Interval[]; byProject: Map<string, number> }>();
+  const archive = options.archive;
+  const accums = new Map<string, ProjectAccum>();
+  const dayTotals = new Map<string, DayBucket>();
+  /** `${day} ${project}` pairs the logs produced, so the archive cannot double them. */
+  const livePairs = new Set<string>();
 
   for (const { path: projectPath, sessions } of merged.values()) {
-    const projectIntervals: Interval[] = [];
-    const sessionSummaries: SessionSummary[] = [];
-    const byDay: Record<string, number> = {};
-    let firstSeen: number | null = null;
-    let lastSeen: number | null = null;
+    const accum: ProjectAccum = {
+      path: projectPath,
+      name: leafName(projectPath),
+      summedMs: 0,
+      intervals: [],
+      sessions: [],
+      archivedSessions: 0,
+      byDay: {},
+      firstSeen: null,
+      lastSeen: null,
+    };
+    /** This project's work split by day, kept only long enough to archive it. */
+    const perDay = new Map<string, { ms: number; intervals: Interval[]; sessions: Set<string> }>();
 
     for (const session of sessions) {
       const clipped = clipToRange(session.intervals, rangeStart, rangeEnd);
       if (clipped.length === 0) continue;
 
-      projectIntervals.push(...clipped);
+      accum.intervals.push(...clipped);
 
       const activeMs = sumDuration(clipped);
+      accum.summedMs += activeMs;
       const sessionFirst = clipped[0][0];
       const sessionLast = clipped[clipped.length - 1][1];
 
-      sessionSummaries.push({
+      accum.sessions.push({
         id: session.id,
         activeMs,
         firstSeen: sessionFirst,
         lastSeen: sessionLast,
       });
 
-      if (firstSeen === null || sessionFirst < firstSeen) firstSeen = sessionFirst;
-      if (lastSeen === null || sessionLast > lastSeen) lastSeen = sessionLast;
+      if (accum.firstSeen === null || sessionFirst < accum.firstSeen) accum.firstSeen = sessionFirst;
+      if (accum.lastSeen === null || sessionLast > accum.lastSeen) accum.lastSeen = sessionLast;
 
       for (const interval of clipped) {
         for (const part of splitIntervalByDay(interval)) {
           const ms = part.interval[1] - part.interval[0];
-          byDay[part.day] = (byDay[part.day] ?? 0) + ms;
+          accum.byDay[part.day] = (accum.byDay[part.day] ?? 0) + ms;
+          addToDay(dayTotals, part.day, projectPath, ms, [part.interval]);
+          livePairs.add(`${part.day} ${projectPath.toLowerCase()}`);
 
-          let bucket = dayTotals.get(part.day);
-          if (!bucket) {
-            bucket = { summed: 0, intervals: [], byProject: new Map() };
-            dayTotals.set(part.day, bucket);
+          let shard = perDay.get(part.day);
+          if (!shard) {
+            shard = { ms: 0, intervals: [], sessions: new Set() };
+            perDay.set(part.day, shard);
           }
-          bucket.summed += ms;
-          bucket.intervals.push(part.interval);
-          bucket.byProject.set(projectPath, (bucket.byProject.get(projectPath) ?? 0) + ms);
+          shard.ms += ms;
+          shard.intervals.push(part.interval);
+          shard.sessions.add(session.id);
         }
       }
     }
 
-    if (projectIntervals.length === 0) continue;
+    if (accum.intervals.length === 0) continue;
+    accums.set(projectPath.toLowerCase(), accum);
 
-    const mergedIntervals = mergeIntervals(projectIntervals);
+    // 4a. Record every finished day this project fully covered. A day only
+    //     partly inside the range is skipped — half a day's numbers must not
+    //     replace a whole one's.
+    if (archive) {
+      for (const [day, shard] of perDay) {
+        if (!dayFullyInRange(day, rangeStart, rangeEnd)) continue;
+        const fresh: ArchivedDay = {
+          day,
+          project: accum.path,
+          name: accum.name,
+          totalMs: shard.ms,
+          intervals: mergeIntervals(shard.intervals),
+          sessionCount: shard.sessions.size,
+          idleSeconds,
+          algo: ALGO_VERSION,
+        };
+        if (wouldErode(archive.get(day, accum.path), fresh)) continue;
+        archive.put(fresh);
+      }
+    }
+  }
+
+  // 5. Put back the days the logs no longer hold. Claude Code's retention
+  //    window is the only reason they are missing, so anything the archive has
+  //    for a (project, day) the scan did not produce is history, not a
+  //    duplicate.
+  let daysRestored = 0;
+  let restoredUnderOtherRules = 0;
+
+  if (archive) {
+    const startDay = toLocalDayKey(Math.max(0, rangeStart));
+    // Clamped to today: ranges routinely end in the future ("this month"), and
+    // an unclamped MAX_SAFE_INTEGER is not a date at all.
+    const endDay = toLocalDayKey(Math.min(rangeEnd, Date.now()));
+
+    for (const entry of archive.range(startDay, endDay)) {
+      if (livePairs.has(`${entry.day} ${entry.project.toLowerCase()}`)) continue;
+      if (!dayFullyInRange(entry.day, rangeStart, rangeEnd)) continue;
+
+      const key = entry.project.toLowerCase();
+      let accum = accums.get(key);
+      if (!accum) {
+        accum = {
+          path: entry.project,
+          name: entry.name,
+          summedMs: 0,
+          intervals: [],
+          sessions: [],
+          archivedSessions: 0,
+          byDay: {},
+          firstSeen: null,
+          lastSeen: null,
+        };
+        accums.set(key, accum);
+      }
+
+      accum.summedMs += entry.totalMs;
+      accum.intervals.push(...entry.intervals);
+      accum.archivedSessions += entry.sessionCount;
+      accum.byDay[entry.day] = (accum.byDay[entry.day] ?? 0) + entry.totalMs;
+      for (const [a, b] of entry.intervals) {
+        if (accum.firstSeen === null || a < accum.firstSeen) accum.firstSeen = a;
+        if (accum.lastSeen === null || b > accum.lastSeen) accum.lastSeen = b;
+      }
+
+      addToDay(dayTotals, entry.day, accum.path, entry.totalMs, entry.intervals);
+      daysRestored++;
+      if (entry.idleSeconds !== idleSeconds || entry.algo !== ALGO_VERSION) restoredUnderOtherRules++;
+    }
+  }
+
+  const archiveSaved = archive?.save();
+  if (archiveSaved && !archiveSaved.ok) {
+    warnings.push(`Day archive could not be saved (${archiveSaved.reason}); these days will be lost if the logs expire.`);
+  }
+  if (restoredUnderOtherRules > 0) {
+    warnings.push(
+      `${restoredUnderOtherRules} archived day(s) were measured at a different idle threshold or under older rules. ` +
+      `Their logs are gone, so they cannot be recomputed — the stored numbers are shown as-is.`,
+    );
+  }
+
+  const projects: ProjectTime[] = [];
+  for (const accum of accums.values()) {
+    if (accum.intervals.length === 0) continue;
+    const mergedIntervals = mergeIntervals(accum.intervals);
 
     projects.push({
-      id: projectPath,
-      path: projectPath,
-      name: leafName(projectPath),
-      totalMs: sumDuration(projectIntervals),
+      id: accum.path,
+      path: accum.path,
+      name: accum.name,
+      totalMs: accum.summedMs,
       wallClockMs: sumDuration(mergedIntervals),
       intervals: mergedIntervals,
-      sessionCount: sessionSummaries.length,
-      sessions: sessionSummaries.sort((a, b) => b.activeMs - a.activeMs),
-      activeDays: Object.keys(byDay).length,
-      firstSeen,
-      lastSeen,
-      byDay,
+      sessionCount: accum.sessions.length + accum.archivedSessions,
+      sessions: accum.sessions.sort((a, b) => b.activeMs - a.activeMs),
+      activeDays: Object.keys(accum.byDay).length,
+      firstSeen: accum.firstSeen,
+      lastSeen: accum.lastSeen,
+      byDay: accum.byDay,
     });
   }
 
@@ -403,6 +579,7 @@ export async function buildTimeReport(options: TimeReportOptions): Promise<TimeR
       filesFailed,
       sessionsMeasured,
       sessionsInferred,
+      daysRestored,
       durationMs: Date.now() - startedAt,
     },
     warnings,

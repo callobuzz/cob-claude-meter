@@ -166,6 +166,15 @@ describe('DayArchive', () => {
     expect(reopened.get(dayKeyDaysAgo(3), 'C:\\work\\alpha')?.totalMs).toBe(12 * HOUR);
   });
 
+  it('sweeps a temp file an interrupted rewrite left behind', () => {
+    writeFileSync(join(dir, 'day-archive-deadbeef.tmp'), '{}', 'utf-8');
+    writeFileSync(join(dir, 'timeline-deadbeef.tmp'), '{}', 'utf-8');
+
+    expect(new DayArchive(dir).sweepTempFiles()).toBe(1);
+    // The scan cache owns its own temp files; this must not reach into them.
+    expect(readdirSync(dir)).toContain('timeline-deadbeef.tmp');
+  });
+
   it('lists the days it holds, so history depth is visible', () => {
     const a = new DayArchive(dir);
     for (const n of [9, 2, 5]) a.put(entry({ day: dayKeyDaysAgo(n) }));

@@ -2,6 +2,7 @@ import { ConfigManager } from '../core/config-manager.js';
 import { discoverLogPaths } from '../core/path-resolver.js';
 import { TagStore } from '../core/tag-store.js';
 import { TimelineCache } from '../core/timeline-cache.js';
+import { DayArchive } from '../core/day-archive.js';
 import { startDashboardServer } from '../server/server.js';
 
 export interface ServeFlags {
@@ -46,6 +47,10 @@ export async function runServeCommand(flags: ServeFlags): Promise<RunningServer 
   cache.load();
   cache.sweepTempFiles();
 
+  const archive = new DayArchive(dataDir);
+  archive.load();
+  archive.sweepTempFiles();
+
   const port = Number(flags.port ?? process.env['PORT'] ?? 4317);
   const host = flags.host ?? process.env['HOST'] ?? '127.0.0.1';
 
@@ -55,6 +60,7 @@ export async function runServeCommand(flags: ServeFlags): Promise<RunningServer 
     logPaths,
     tags,
     cache,
+    archive,
     reportTtlMs: 15_000,
   });
 

@@ -760,6 +760,7 @@ function renderFooter() {
   const failed = report.scan.filesFailed;
   const measured = report.scan.sessionsMeasured ?? 0;
   const inferred = report.scan.sessionsInferred ?? 0;
+  const restored = report.scan.daysRestored ?? 0;
 
   // Say which sessions were measured and which were guessed at. A total that
   // mixes the two should not look uniformly precise.
@@ -768,9 +769,16 @@ function renderFooter() {
     : `${measured} measured from recorded turn times · ` +
       `${inferred} estimated from activity gaps (idle cutoff ${idleMin} min)`;
 
+  // Restored days come from the archive, not from a log that still exists.
+  // Worth stating plainly: it is the only part of the total that cannot be
+  // recomputed if it is ever wrong.
+  const fromArchive = restored > 0
+    ? ` · ${restored} project-day${restored > 1 ? 's' : ''} restored from the archive`
+    : '';
+
   $('footer-meta').textContent =
     `${basis} · ` +
-    `${report.scan.filesScanned} session logs (${report.scan.filesFromCache} cached) · ` +
+    `${report.scan.filesScanned} session logs (${report.scan.filesFromCache} cached)${fromArchive} · ` +
     `generated ${new Date(report.generatedAt).toLocaleTimeString()}`;
 
   // A skipped log means the totals are undercounted — never hide that.
@@ -784,6 +792,13 @@ function renderFooter() {
     // It used to surface as a 500, so it must not now vanish into the console.
     const cacheWarning = report.warnings.find(w => w.startsWith('Timeline cache'));
     if (cacheWarning && failed === 0) toast(cacheWarning);
+
+    // Archived days whose logs are gone cannot be recomputed at the threshold
+    // now selected. Moving the slider will not change them, and silently
+    // showing numbers from another setting would be the stale-cache problem
+    // wearing a different hat.
+    const archiveWarning = report.warnings.find(w => /archived day/i.test(w));
+    if (archiveWarning && failed === 0) toast(archiveWarning);
   }
 }
 
