@@ -17,104 +17,104 @@ describe('TagStore', () => {
   });
 
   it('returns empty meta for an unknown project', () => {
-    expect(store.get('J:\\callobuzz\\app')).toEqual(emptyMeta());
+    expect(store.get('C:\\work\\app')).toEqual(emptyMeta());
   });
 
   it('stores a client name', () => {
-    store.update('J:\\callobuzz\\app', { client: 'Acme Corp' });
-    expect(store.get('J:\\callobuzz\\app').client).toBe('Acme Corp');
+    store.update('C:\\work\\app', { client: 'Acme Corp' });
+    expect(store.get('C:\\work\\app').client).toBe('Acme Corp');
   });
 
   it('persists across instances', () => {
-    store.update('J:\\callobuzz\\app', { client: 'Acme Corp', tags: ['retainer'] });
+    store.update('C:\\work\\app', { client: 'Acme Corp', tags: ['retainer'] });
 
     const reloaded = new TagStore(dir).load();
-    expect(reloaded.get('J:\\callobuzz\\app').client).toBe('Acme Corp');
-    expect(reloaded.get('J:\\callobuzz\\app').tags).toEqual(['retainer']);
+    expect(reloaded.get('C:\\work\\app').client).toBe('Acme Corp');
+    expect(reloaded.get('C:\\work\\app').tags).toEqual(['retainer']);
   });
 
   it('writes tags.json into the given directory', () => {
-    store.update('J:\\app', { client: 'X' });
+    store.update('C:\\app', { client: 'X' });
     expect(existsSync(join(dir, 'tags.json'))).toBe(true);
   });
 
   it('matches paths case-insensitively', () => {
-    store.update('J:\\Callobuzz\\App', { client: 'Acme' });
-    expect(store.get('j:\\callobuzz\\app').client).toBe('Acme');
+    store.update('C:\\Work\\App', { client: 'Acme' });
+    expect(store.get('c:\\work\\app').client).toBe('Acme');
   });
 
   it('ignores a trailing separator', () => {
-    store.update('J:\\app\\', { client: 'Acme' });
-    expect(store.get('J:\\app').client).toBe('Acme');
+    store.update('C:\\app\\', { client: 'Acme' });
+    expect(store.get('C:\\app').client).toBe('Acme');
   });
 
   it('merges partial updates instead of replacing', () => {
-    store.update('J:\\app', { client: 'Acme', tags: ['a'] });
-    store.update('J:\\app', { alias: 'The App' });
+    store.update('C:\\app', { client: 'Acme', tags: ['a'] });
+    store.update('C:\\app', { alias: 'The App' });
 
-    const meta = store.get('J:\\app');
+    const meta = store.get('C:\\app');
     expect(meta.client).toBe('Acme');
     expect(meta.tags).toEqual(['a']);
     expect(meta.alias).toBe('The App');
   });
 
   it('treats an empty client string as unset', () => {
-    store.update('J:\\app', { client: 'Acme' });
-    store.update('J:\\app', { client: '  ' });
-    expect(store.get('J:\\app').client).toBeNull();
+    store.update('C:\\app', { client: 'Acme' });
+    store.update('C:\\app', { client: '  ' });
+    expect(store.get('C:\\app').client).toBeNull();
   });
 
   it('trims whitespace around labels', () => {
-    store.update('J:\\app', { client: '  Acme  ' });
-    expect(store.get('J:\\app').client).toBe('Acme');
+    store.update('C:\\app', { client: '  Acme  ' });
+    expect(store.get('C:\\app').client).toBe('Acme');
   });
 
   it('drops empty and duplicate tags', () => {
-    store.update('J:\\app', { tags: ['Billable', '', '  ', 'billable', 'Urgent'] });
-    expect(store.get('J:\\app').tags).toEqual(['Billable', 'Urgent']);
+    store.update('C:\\app', { tags: ['Billable', '', '  ', 'billable', 'Urgent'] });
+    expect(store.get('C:\\app').tags).toEqual(['Billable', 'Urgent']);
   });
 
   it('assigns a client to many projects at once', () => {
-    store.bulkAssignClient(['J:\\a', 'J:\\b', 'J:\\c'], 'Acme Corp');
-    expect(store.get('J:\\a').client).toBe('Acme Corp');
-    expect(store.get('J:\\b').client).toBe('Acme Corp');
-    expect(store.get('J:\\c').client).toBe('Acme Corp');
+    store.bulkAssignClient(['C:\\a', 'C:\\b', 'C:\\c'], 'Acme Corp');
+    expect(store.get('C:\\a').client).toBe('Acme Corp');
+    expect(store.get('C:\\b').client).toBe('Acme Corp');
+    expect(store.get('C:\\c').client).toBe('Acme Corp');
   });
 
   it('preserves existing tags during bulk client assignment', () => {
-    store.update('J:\\a', { tags: ['keep-me'] });
-    store.bulkAssignClient(['J:\\a'], 'Acme Corp');
-    expect(store.get('J:\\a').tags).toEqual(['keep-me']);
+    store.update('C:\\a', { tags: ['keep-me'] });
+    store.bulkAssignClient(['C:\\a'], 'Acme Corp');
+    expect(store.get('C:\\a').tags).toEqual(['keep-me']);
   });
 
   it('lists clients in use, deduplicated and sorted', () => {
-    store.update('J:\\a', { client: 'Zeta' });
-    store.update('J:\\b', { client: 'Acme' });
-    store.update('J:\\c', { client: 'Acme' });
+    store.update('C:\\a', { client: 'Zeta' });
+    store.update('C:\\b', { client: 'Acme' });
+    store.update('C:\\c', { client: 'Acme' });
     expect(store.listClients()).toEqual(['Acme', 'Zeta']);
   });
 
   it('lists tags in use, deduplicated and sorted', () => {
-    store.update('J:\\a', { tags: ['zebra', 'alpha'] });
-    store.update('J:\\b', { tags: ['alpha'] });
+    store.update('C:\\a', { tags: ['zebra', 'alpha'] });
+    store.update('C:\\b', { tags: ['alpha'] });
     expect(store.listTags()).toEqual(['alpha', 'zebra']);
   });
 
   it('supports hiding a project', () => {
-    store.update('J:\\a', { hidden: true });
-    expect(store.get('J:\\a').hidden).toBe(true);
+    store.update('C:\\a', { hidden: true });
+    expect(store.get('C:\\a').hidden).toBe(true);
   });
 
   it('survives a corrupt tags.json', () => {
     writeFileSync(join(dir, 'tags.json'), '{ not json', 'utf-8');
     const reloaded = new TagStore(dir).load();
-    expect(reloaded.get('J:\\a')).toEqual(emptyMeta());
+    expect(reloaded.get('C:\\a')).toEqual(emptyMeta());
   });
 
   it('does not leak internal state through all()', () => {
-    store.update('J:\\a', { tags: ['x'] });
+    store.update('C:\\a', { tags: ['x'] });
     const snapshot = store.all();
-    snapshot['j:\\a'].tags.push('mutated');
-    expect(store.get('J:\\a').tags).toEqual(['x']);
+    snapshot['c:\\a'].tags.push('mutated');
+    expect(store.get('C:\\a').tags).toEqual(['x']);
   });
 });

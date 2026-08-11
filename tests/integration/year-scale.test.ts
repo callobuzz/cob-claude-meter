@@ -68,20 +68,20 @@ function buildYear(): void {
           type: 'user',
           origin: { kind: 'human' },
           message: { content: 'work' },
-          cwd: `J:\\work\\${project}`,
+          cwd: `C:\\work\\${project}`,
           timestamp: iso(start),
         }));
         lines.push(JSON.stringify({
           type: 'assistant',
           message: { content: [{ type: 'tool_use', name: 'Bash' }] },
-          cwd: `J:\\work\\${project}`,
+          cwd: `C:\\work\\${project}`,
           timestamp: iso(start + 500),
         }));
         lines.push(JSON.stringify({
           type: 'system',
           subtype: 'turn_duration',
           durationMs: TURN_MS,
-          cwd: `J:\\work\\${project}`,
+          cwd: `C:\\work\\${project}`,
           timestamp: iso(end),
         }));
       }

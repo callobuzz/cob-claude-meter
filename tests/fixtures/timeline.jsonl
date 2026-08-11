@@ -1,8 +1,8 @@
 {"type":"mode","mode":"normal","sessionId":"timeline"}
-{"type":"attachment","cwd":"J:\\callobuzz\\stale-path","timestamp":"2026-07-15T09:00:00Z","sessionId":"timeline"}
-{"type":"user","message":{"role":"user","content":"hello"},"cwd":"J:\\callobuzz\\demo","timestamp":"2026-07-15T09:02:00Z","sessionId":"timeline"}
-{"type":"assistant","message":{"model":"claude-opus-5","usage":{"input_tokens":10,"output_tokens":20}},"cwd":"J:\\callobuzz\\demo","timestamp":"2026-07-15T09:05:00Z","sessionId":"timeline"}
-{"type":"system","subtype":"hook","cwd":"J:\\callobuzz\\demo\\src","timestamp":"2026-07-15T09:06:00Z","sessionId":"timeline"}
+{"type":"attachment","cwd":"C:\\work\\stale-path","timestamp":"2026-07-15T09:00:00Z","sessionId":"timeline"}
+{"type":"user","message":{"role":"user","content":"hello"},"cwd":"C:\\work\\demo","timestamp":"2026-07-15T09:02:00Z","sessionId":"timeline"}
+{"type":"assistant","message":{"model":"claude-opus-5","usage":{"input_tokens":10,"output_tokens":20}},"cwd":"C:\\work\\demo","timestamp":"2026-07-15T09:05:00Z","sessionId":"timeline"}
+{"type":"system","subtype":"hook","cwd":"C:\\work\\demo\\src","timestamp":"2026-07-15T09:06:00Z","sessionId":"timeline"}
 INVALID JSON LINE
-{"type":"user","message":{"role":"user","content":"back after a break"},"cwd":"J:\\callobuzz\\demo","timestamp":"2026-07-15T11:20:00Z","sessionId":"timeline"}
-{"type":"assistant","message":{"model":"claude-opus-5","usage":{"input_tokens":5,"output_tokens":5}},"cwd":"J:\\callobuzz\\demo","timestamp":"2026-07-15T11:30:00Z","sessionId":"timeline"}
+{"type":"user","message":{"role":"user","content":"back after a break"},"cwd":"C:\\work\\demo","timestamp":"2026-07-15T11:20:00Z","sessionId":"timeline"}
+{"type":"assistant","message":{"model":"claude-opus-5","usage":{"input_tokens":5,"output_tokens":5}},"cwd":"C:\\work\\demo","timestamp":"2026-07-15T11:30:00Z","sessionId":"timeline"}

@@ -172,57 +172,57 @@ describe('resolveProjectRoot', () => {
   });
 
   it('returns the only cwd', () => {
-    const cwds = new Map([['J:\\callobuzz\\app', 10]]);
-    expect(resolveProjectRoot(cwds)).toBe('J:\\callobuzz\\app');
+    const cwds = new Map([['C:\\work\\app', 10]]);
+    expect(resolveProjectRoot(cwds)).toBe('C:\\work\\app');
   });
 
   it('picks the repo root over its subdirectories', () => {
     const cwds = new Map([
-      ['J:\\callobuzz\\cob-causeops\\client-template', 7722],
-      ['J:\\callobuzz\\cob-causeops', 2144],
-      ['J:\\callobuzz\\cob-causeops\\docs\\specs', 310],
+      ['C:\\work\\platform\\packages\\ui', 7722],
+      ['C:\\work\\platform', 2144],
+      ['C:\\work\\platform\\docs\\specs', 310],
     ]);
-    expect(resolveProjectRoot(cwds)).toBe('J:\\callobuzz\\cob-causeops');
+    expect(resolveProjectRoot(cwds)).toBe('C:\\work\\platform');
   });
 
   it('rejects a stale outlier path that nothing sits under', () => {
     // The real bug: `cob-cause-ops` appeared first in the file but only 35 times,
     // and no other entry lives beneath it.
     const cwds = new Map([
-      ['J:\\callobuzz\\cob-causeops\\client-template', 7722],
-      ['J:\\callobuzz\\cob-causeops', 2144],
-      ['J:\\callobuzz\\cob-cause-ops', 35],
+      ['C:\\work\\platform\\packages\\ui', 7722],
+      ['C:\\work\\platform', 2144],
+      ['C:\\work\\plat-form', 35],
     ]);
-    expect(resolveProjectRoot(cwds)).toBe('J:\\callobuzz\\cob-causeops');
+    expect(resolveProjectRoot(cwds)).toBe('C:\\work\\platform');
   });
 
   it('ignores a deep node_modules excursion', () => {
     const cwds = new Map([
-      ['J:\\app', 100],
-      ['J:\\app\\node_modules\\.pnpm\\stripe@22.3.2\\node_modules\\stripe', 33],
+      ['C:\\app', 100],
+      ['C:\\app\\node_modules\\.pnpm\\stripe@22.3.2\\node_modules\\stripe', 33],
     ]);
-    expect(resolveProjectRoot(cwds)).toBe('J:\\app');
+    expect(resolveProjectRoot(cwds)).toBe('C:\\app');
   });
 
   it('handles posix paths', () => {
     const cwds = new Map([
-      ['/home/sv/app/src', 50],
-      ['/home/sv/app', 20],
+      ['/home/dev/app/src', 50],
+      ['/home/dev/app', 20],
     ]);
-    expect(resolveProjectRoot(cwds)).toBe('/home/sv/app');
+    expect(resolveProjectRoot(cwds)).toBe('/home/dev/app');
   });
 
   it('is case-insensitive on drive-letter paths', () => {
     const cwds = new Map([
-      ['J:\\App\\src', 50],
-      ['J:\\app', 20],
+      ['C:\\App\\src', 50],
+      ['C:\\app', 20],
     ]);
-    expect(resolveProjectRoot(cwds)).toBe('J:\\app');
+    expect(resolveProjectRoot(cwds)).toBe('C:\\app');
   });
 
   it('strips a trailing separator', () => {
-    const cwds = new Map([['J:\\app\\', 5]]);
-    expect(resolveProjectRoot(cwds)).toBe('J:\\app');
+    const cwds = new Map([['C:\\app\\', 5]]);
+    expect(resolveProjectRoot(cwds)).toBe('C:\\app');
   });
 });
 
@@ -241,9 +241,9 @@ describe('scanSessionTimestamps', () => {
 
   it('counts every cwd it sees', async () => {
     const { cwds } = await scanSessionTimestamps(FIXTURE_PATH);
-    expect(cwds.get('J:\\callobuzz\\demo')).toBe(4);
-    expect(cwds.get('J:\\callobuzz\\demo\\src')).toBe(1);
-    expect(cwds.get('J:\\callobuzz\\stale-path')).toBe(1);
+    expect(cwds.get('C:\\work\\demo')).toBe(4);
+    expect(cwds.get('C:\\work\\demo\\src')).toBe(1);
+    expect(cwds.get('C:\\work\\stale-path')).toBe(1);
   });
 
   it('survives malformed lines', async () => {
@@ -273,6 +273,6 @@ describe('loadSessionTimeline', () => {
 
   it('resolves the project root past the stale path', async () => {
     const { cwds } = await loadSessionTimeline(FIXTURE_PATH);
-    expect(resolveProjectRoot(cwds)).toBe('J:\\callobuzz\\demo');
+    expect(resolveProjectRoot(cwds)).toBe('C:\\work\\demo');
   });
 });

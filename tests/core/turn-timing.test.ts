@@ -35,7 +35,7 @@ function writeSession(name: string, lines: unknown[]): string {
 describe('scanSessionTimestamps: turn records', () => {
   it('reconstructs a turn interval backwards from its end stamp', async () => {
     const p = writeSession('a.jsonl', [
-      { type: 'user', timestamp: iso(0), cwd: 'J:\\demo' },
+      { type: 'user', timestamp: iso(0), cwd: 'C:\\demo' },
       { type: 'system', subtype: 'turn_duration', durationMs: 12 * MIN, timestamp: iso(12) },
     ]);
 
@@ -202,7 +202,7 @@ describe('TimelineCache', () => {
       idleSeconds: 300,
       source: 'turns',
       intervals: [[at(0), at(10)]],
-      cwds: [['J:\\demo', 3]],
+      cwds: [['C:\\demo', 3]],
       firstSeen: at(0),
       lastSeen: at(10),
     });

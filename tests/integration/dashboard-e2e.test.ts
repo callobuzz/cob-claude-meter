@@ -108,20 +108,20 @@ beforeAll(async () => {
 
   // --- alpha: two sessions running the SAME hour, so summed != wall-clock ---
   const alphaDay = localMidnight(1) + 9 * HOUR;
-  writeSession(join(logRoot, 'proj-alpha'), 'alpha-1', 'J:\\work\\alpha', [
+  writeSession(join(logRoot, 'proj-alpha'), 'alpha-1', 'C:\\work\\alpha', [
     { start: alphaDay, durationMs: HOUR },
   ]);
-  writeSession(join(logRoot, 'proj-alpha'), 'alpha-2', 'J:\\work\\alpha', [
+  writeSession(join(logRoot, 'proj-alpha'), 'alpha-2', 'C:\\work\\alpha', [
     { start: alphaDay, durationMs: HOUR },
   ]);
 
   // --- beta: one turn that spent 40 minutes inside a single tool call ---
-  writeSession(join(logRoot, 'proj-beta'), 'beta-1', 'J:\\work\\beta', [
+  writeSession(join(logRoot, 'proj-beta'), 'beta-1', 'C:\\work\\beta', [
     { start: localMidnight(1) + 14 * HOUR, durationMs: 40 * MIN },
   ]);
 
   // --- gamma: a turn crossing local midnight, 30 min either side ---
-  writeSession(join(logRoot, 'proj-gamma'), 'gamma-1', 'J:\\work\\gamma', [
+  writeSession(join(logRoot, 'proj-gamma'), 'gamma-1', 'C:\\work\\gamma', [
     { start: localMidnight(2) - 30 * MIN, durationMs: HOUR },
   ]);
 

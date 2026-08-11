@@ -51,8 +51,8 @@ describe('buildTimeReport', () => {
     // Both run 09:00-10:00 on the same day: 1h + 1h = 2h summed, 1h wall-clock.
     const start = new Date(2026, 6, 15, 9, 0);
     project('P--app')
-      .session('a', 'J:\\app', start, 61, 1)
-      .session('b', 'J:\\app', start, 61, 1);
+      .session('a', 'C:\\app', start, 61, 1)
+      .session('b', 'C:\\app', start, 61, 1);
 
     const report = await buildTimeReport({ logPaths: [logs], idleSeconds: 300 });
 
@@ -64,8 +64,8 @@ describe('buildTimeReport', () => {
 
   it('reports summed total above wall-clock across different projects', async () => {
     const start = new Date(2026, 6, 15, 9, 0);
-    project('P--a').session('a', 'J:\\a', start, 61, 1);
-    project('P--b').session('b', 'J:\\b', start, 61, 1);
+    project('P--a').session('a', 'C:\\a', start, 61, 1);
+    project('P--b').session('b', 'C:\\b', start, 61, 1);
 
     const report = await buildTimeReport({ logPaths: [logs], idleSeconds: 300 });
 
@@ -76,13 +76,13 @@ describe('buildTimeReport', () => {
 
   it('ignores subagent logs nested under a session directory', async () => {
     const start = new Date(2026, 6, 15, 9, 0);
-    const p = project('P--app').session('main', 'J:\\app', start, 61, 1);
+    const p = project('P--app').session('main', 'C:\\app', start, 61, 1);
 
     const subagents = join(p.dir, 'main', 'subagents');
     mkdirSync(subagents, { recursive: true });
     writeFileSync(
       join(subagents, 'agent-1.jsonl'),
-      sessionLines('J:\\app', start, 61, 1),
+      sessionLines('C:\\app', start, 61, 1),
       'utf-8',
     );
 
@@ -95,19 +95,19 @@ describe('buildTimeReport', () => {
 
   it('merges two log directories that resolve to the same project path', async () => {
     const start = new Date(2026, 6, 15, 9, 0);
-    project('P--app-old').session('a', 'J:\\app', start, 31, 1);
-    project('P--app').session('b', 'J:\\app', new Date(2026, 6, 16, 9, 0), 31, 1);
+    project('P--app-old').session('a', 'C:\\app', start, 31, 1);
+    project('P--app').session('b', 'C:\\app', new Date(2026, 6, 16, 9, 0), 31, 1);
 
     const report = await buildTimeReport({ logPaths: [logs], idleSeconds: 300 });
 
     expect(report.projects).toHaveLength(1);
-    expect(report.projects[0].path).toBe('J:\\app');
+    expect(report.projects[0].path).toBe('C:\\app');
     expect(report.projects[0].sessionCount).toBe(2);
   });
 
   it('splits an overnight session across both days', async () => {
     const start = new Date(2026, 6, 15, 23, 30);
-    project('P--app').session('a', 'J:\\app', start, 61, 1); // 23:30 -> 00:30
+    project('P--app').session('a', 'C:\\app', start, 61, 1); // 23:30 -> 00:30
 
     const report = await buildTimeReport({ logPaths: [logs], idleSeconds: 300 });
     const days = Object.fromEntries(report.days.map(d => [d.day, d.totalMs]));
@@ -118,7 +118,7 @@ describe('buildTimeReport', () => {
 
   it('excludes gaps beyond the idle threshold', async () => {
     const start = new Date(2026, 6, 15, 9, 0);
-    project('P--app').session('a', 'J:\\app', start, 4, 10); // 10-min steps
+    project('P--app').session('a', 'C:\\app', start, 4, 10); // 10-min steps
 
     const tight = await buildTimeReport({ logPaths: [logs], idleSeconds: 300 });
     const loose = await buildTimeReport({ logPaths: [logs], idleSeconds: 900 });
@@ -129,7 +129,7 @@ describe('buildTimeReport', () => {
 
   it('clips to the requested range', async () => {
     const start = new Date(2026, 6, 15, 9, 0);
-    project('P--app').session('a', 'J:\\app', start, 121, 1); // 09:00 -> 11:00
+    project('P--app').session('a', 'C:\\app', start, 121, 1); // 09:00 -> 11:00
 
     const report = await buildTimeReport({
       logPaths: [logs],
@@ -147,18 +147,18 @@ describe('buildTimeReport', () => {
     mkdirSync(dir, { recursive: true });
 
     const lines = [
-      sessionLines('J:\\app\\packages\\web', start, 40, 1).trim(),
-      sessionLines('J:\\app', new Date(start.getTime() + 40 * MIN), 10, 1).trim(),
+      sessionLines('C:\\app\\packages\\web', start, 40, 1).trim(),
+      sessionLines('C:\\app', new Date(start.getTime() + 40 * MIN), 10, 1).trim(),
     ].join('\n') + '\n';
     writeFileSync(join(dir, 'a.jsonl'), lines, 'utf-8');
 
     const report = await buildTimeReport({ logPaths: [logs], idleSeconds: 300 });
-    expect(report.projects[0].path).toBe('J:\\app');
+    expect(report.projects[0].path).toBe('C:\\app');
   });
 
   it('skips an unreadable log instead of failing the whole report', async () => {
     const start = new Date(2026, 6, 15, 9, 0);
-    const p = project('P--app').session('good', 'J:\\app', start, 61, 1);
+    const p = project('P--app').session('good', 'C:\\app', start, 61, 1);
 
     // A directory named like a session file: opening it for read throws EISDIR.
     mkdirSync(join(p.dir, 'broken.jsonl'), { recursive: true });
@@ -175,8 +175,8 @@ describe('buildTimeReport', () => {
     // cold scan. The rest of the report must still come through.
     const start = new Date(2026, 6, 15, 9, 0);
     project('P--app')
-      .session('good', 'J:\\app', start, 61, 1)
-      .session('bad', 'J:\\app', start, 61, 1);
+      .session('good', 'C:\\app', start, 61, 1)
+      .session('bad', 'C:\\app', start, 61, 1);
 
     const report = await buildTimeReport({
       logPaths: [logs],
@@ -199,7 +199,7 @@ describe('buildTimeReport', () => {
 
   it('retries a transient read failure before giving up', async () => {
     const start = new Date(2026, 6, 15, 9, 0);
-    project('P--app').session('flaky', 'J:\\app', start, 61, 1);
+    project('P--app').session('flaky', 'C:\\app', start, 61, 1);
 
     let attempts = 0;
     const report = await buildTimeReport({
@@ -222,7 +222,7 @@ describe('buildTimeReport', () => {
     // some files before succeeding. Giving up early does not error — it quietly
     // omits those hours, which is worse than failing loudly.
     const start = new Date(2026, 6, 15, 9, 0);
-    project('P--app').session('stubborn', 'J:\\app', start, 61, 1);
+    project('P--app').session('stubborn', 'C:\\app', start, 61, 1);
 
     let attempts = 0;
     const report = await buildTimeReport({
@@ -242,7 +242,7 @@ describe('buildTimeReport', () => {
 
   it('reports the first error once the retry budget is exhausted', async () => {
     const start = new Date(2026, 6, 15, 9, 0);
-    project('P--app').session('hopeless', 'J:\\app', start, 61, 1);
+    project('P--app').session('hopeless', 'C:\\app', start, 61, 1);
 
     let attempts = 0;
     const report = await buildTimeReport({
@@ -268,8 +268,8 @@ describe('buildTimeReport', () => {
 
   it('orders projects by summed hours descending', async () => {
     const start = new Date(2026, 6, 15, 9, 0);
-    project('P--small').session('a', 'J:\\small', start, 11, 1);
-    project('P--big').session('b', 'J:\\big', start, 61, 1);
+    project('P--small').session('a', 'C:\\small', start, 11, 1);
+    project('P--big').session('b', 'C:\\big', start, 61, 1);
 
     const report = await buildTimeReport({ logPaths: [logs], idleSeconds: 300 });
     expect(report.projects.map(p => p.name)).toEqual(['big', 'small']);
@@ -280,8 +280,8 @@ describe('buildTimeReport', () => {
     // 1.5h wall-clock, and the shipped intervals must be the merged union.
     const start = new Date(2026, 6, 15, 9, 0);
     project('P--app')
-      .session('a', 'J:\\app', start, 61, 1)
-      .session('b', 'J:\\app', new Date(start.getTime() + 30 * MIN), 61, 1);
+      .session('a', 'C:\\app', start, 61, 1)
+      .session('b', 'C:\\app', new Date(start.getTime() + 30 * MIN), 61, 1);
 
     const report = await buildTimeReport({ logPaths: [logs], idleSeconds: 300 });
     const p = report.projects[0];
@@ -296,9 +296,9 @@ describe('buildTimeReport', () => {
     // This is the whole reason intervals are shipped: wall-clock is a union, so
     // a filtered total cannot be reconstructed from per-project scalars.
     const start = new Date(2026, 6, 15, 9, 0);
-    project('P--a').session('a', 'J:\\a', start, 61, 1);                                   // 09:00-10:00
-    project('P--b').session('b', 'J:\\b', new Date(start.getTime() + 30 * MIN), 61, 1);    // 09:30-10:30
-    project('P--c').session('c', 'J:\\c', new Date(2026, 6, 15, 14, 0), 61, 1);            // 14:00-15:00
+    project('P--a').session('a', 'C:\\a', start, 61, 1);                                   // 09:00-10:00
+    project('P--b').session('b', 'C:\\b', new Date(start.getTime() + 30 * MIN), 61, 1);    // 09:30-10:30
+    project('P--c').session('c', 'C:\\c', new Date(2026, 6, 15, 14, 0), 61, 1);            // 14:00-15:00
 
     const report = await buildTimeReport({ logPaths: [logs], idleSeconds: 300 });
     const by = Object.fromEntries(report.projects.map(p => [p.name, p]));
@@ -318,8 +318,8 @@ describe('buildTimeReport', () => {
 
   it('orders days ascending', async () => {
     project('P--app')
-      .session('a', 'J:\\app', new Date(2026, 6, 16, 9, 0), 11, 1)
-      .session('b', 'J:\\app', new Date(2026, 6, 14, 9, 0), 11, 1);
+      .session('a', 'C:\\app', new Date(2026, 6, 16, 9, 0), 11, 1)
+      .session('b', 'C:\\app', new Date(2026, 6, 14, 9, 0), 11, 1);
 
     const report = await buildTimeReport({ logPaths: [logs], idleSeconds: 300 });
     expect(report.days.map(d => d.day)).toEqual(['2026-07-14', '2026-07-16']);

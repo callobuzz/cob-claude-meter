@@ -41,7 +41,7 @@ export class TagStore {
     this.filePath = join(dir, 'tags.json');
   }
 
-  /** Paths are compared case-insensitively — Windows treats J:\App and J:\app as one. */
+  /** Paths are compared case-insensitively — Windows treats C:\App and C:\app as one. */
   private static key(projectPath: string): string {
     return projectPath.replace(/[\\/]+$/, '').toLowerCase();
   }

@@ -158,8 +158,8 @@ describe('scanRetentionState', () => {
     writeFileSync(join(dir, 'sessions-index.json'), JSON.stringify({
       version: 1,
       entries: [
-        { sessionId: 'a', fullPath: join(dir, 'gone-a.jsonl'), messageCount: 40, modified: '2026-02-01T10:00:00Z', projectPath: 'J:\\old-app' },
-        { sessionId: 'b', fullPath: join(dir, 'gone-b.jsonl'), messageCount: 12, modified: '2026-02-08T10:00:00Z', projectPath: 'J:\\old-app' },
+        { sessionId: 'a', fullPath: join(dir, 'gone-a.jsonl'), messageCount: 40, modified: '2026-02-01T10:00:00Z', projectPath: 'C:\\old-app' },
+        { sessionId: 'b', fullPath: join(dir, 'gone-b.jsonl'), messageCount: 12, modified: '2026-02-08T10:00:00Z', projectPath: 'C:\\old-app' },
       ],
     }), 'utf-8');
 
@@ -168,7 +168,7 @@ describe('scanRetentionState', () => {
     expect(state.missingTranscripts).toBe(2);
     expect(state.pruned).toHaveLength(1);
     expect(state.pruned[0]).toMatchObject({
-      path: 'J:\\old-app', sessions: 2, messages: 52, lastActivity: '2026-02-08',
+      path: 'C:\\old-app', sessions: 2, messages: 52, lastActivity: '2026-02-08',
     });
   });
 
