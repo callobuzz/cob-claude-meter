@@ -44,6 +44,7 @@ export async function runServeCommand(flags: ServeFlags): Promise<RunningServer 
   const tags = new TagStore(dataDir).load();
   const cache = new TimelineCache(dataDir);
   cache.load();
+  cache.sweepTempFiles();
 
   const port = Number(flags.port ?? process.env['PORT'] ?? 4317);
   const host = flags.host ?? process.env['HOST'] ?? '127.0.0.1';

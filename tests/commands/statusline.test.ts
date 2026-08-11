@@ -1,4 +1,23 @@
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { renderStatusline } from '../../src/commands/statusline-cmd.js';
+
+/**
+ * A real cache directory, just not the developer's own.
+ *
+ * Rendering defaults to `~/.claude-meter` and rescans every session log when
+ * that cache is stale. Pointed at the real home directory these tests were
+ * both slow and non-deterministic — output depended on whatever the machine
+ * had cached, which is why two of them failed intermittently in full runs and
+ * passed in isolation.
+ */
+const CACHE_DIR = mkdtempSync(join(tmpdir(), 'meter-statusline-'));
+const RENDER_OPTS = { noColor: true, cacheDir: CACHE_DIR, autoRefresh: false };
+
+afterAll(() => {
+  rmSync(CACHE_DIR, { recursive: true, force: true });
+});
 
 const MOCK_WITH_RATE_LIMITS = {
   ...{
@@ -46,50 +65,50 @@ const MOCK_STDIN = {
 
 describe('renderStatusline', () => {
   it('replace mode produces 2 lines', async () => {
-    const output = await renderStatusline(MOCK_STDIN, 'replace', { noColor: true });
+    const output = await renderStatusline(MOCK_STDIN, 'replace', RENDER_OPTS);
     const lines = output.split('\n').filter(Boolean);
     expect(lines.length).toBe(2);
   });
 
   it('replace mode line 1 contains model name', async () => {
-    const output = await renderStatusline(MOCK_STDIN, 'replace', { noColor: true });
+    const output = await renderStatusline(MOCK_STDIN, 'replace', RENDER_OPTS);
     const lines = output.split('\n').filter(Boolean);
     expect(lines[0]).toContain('Opus');
   });
 
   it('replace mode line 1 contains progress bar', async () => {
-    const output = await renderStatusline(MOCK_STDIN, 'replace', { noColor: true });
+    const output = await renderStatusline(MOCK_STDIN, 'replace', RENDER_OPTS);
     const lines = output.split('\n').filter(Boolean);
     expect(lines[0]).toContain('%');
     expect(lines[0]).toMatch(/[\[=\s\]]/);
   });
 
   it('replace mode line 1 contains project name', async () => {
-    const output = await renderStatusline(MOCK_STDIN, 'replace', { noColor: true });
+    const output = await renderStatusline(MOCK_STDIN, 'replace', RENDER_OPTS);
     const lines = output.split('\n').filter(Boolean);
     expect(lines[0]).toContain('project');
   });
 
   it('inline mode produces single line', async () => {
-    const output = await renderStatusline(MOCK_STDIN, 'inline', { noColor: true });
+    const output = await renderStatusline(MOCK_STDIN, 'inline', RENDER_OPTS);
     const lines = output.split('\n').filter(Boolean);
     expect(lines.length).toBe(1);
   });
 
   it('add mode produces single line (meter data only)', async () => {
-    const output = await renderStatusline(MOCK_STDIN, 'add', { noColor: true });
+    const output = await renderStatusline(MOCK_STDIN, 'add', RENDER_OPTS);
     const lines = output.split('\n').filter(Boolean);
     expect(lines.length).toBe(1);
   });
 
   it('output contains cost info', async () => {
-    const output = await renderStatusline(MOCK_STDIN, 'inline', { noColor: true });
+    const output = await renderStatusline(MOCK_STDIN, 'inline', RENDER_OPTS);
     expect(output).toContain('$');
   });
 
   it('handles null current_usage gracefully', async () => {
     const data = { ...MOCK_STDIN, context_window: { ...MOCK_STDIN.context_window, current_usage: null } };
-    const output = await renderStatusline(data, 'replace', { noColor: true });
+    const output = await renderStatusline(data, 'replace', RENDER_OPTS);
     expect(output.length).toBeGreaterThan(0);
   });
 });
@@ -147,50 +166,50 @@ describe('formatTimeRemaining', () => {
 
 describe('rate limit line', () => {
   it('replace mode produces 3 lines when rate_limits present', async () => {
-    const output = await renderStatusline(MOCK_WITH_RATE_LIMITS, 'replace', { noColor: true });
+    const output = await renderStatusline(MOCK_WITH_RATE_LIMITS, 'replace', RENDER_OPTS);
     const lines = output.split('\n').filter(Boolean);
     expect(lines.length).toBe(3);
   });
 
   it('line 3 contains Usage label', async () => {
-    const output = await renderStatusline(MOCK_WITH_RATE_LIMITS, 'replace', { noColor: true });
+    const output = await renderStatusline(MOCK_WITH_RATE_LIMITS, 'replace', RENDER_OPTS);
     const lines = output.split('\n').filter(Boolean);
     expect(lines[2]).toContain('Usage');
   });
 
   it('line 3 contains block bar characters', async () => {
-    const output = await renderStatusline(MOCK_WITH_RATE_LIMITS, 'replace', { noColor: true });
+    const output = await renderStatusline(MOCK_WITH_RATE_LIMITS, 'replace', RENDER_OPTS);
     const lines = output.split('\n').filter(Boolean);
     expect(lines[2]).toMatch(/[█░]/);
   });
 
   it('line 3 contains percentage', async () => {
-    const output = await renderStatusline(MOCK_WITH_RATE_LIMITS, 'replace', { noColor: true });
+    const output = await renderStatusline(MOCK_WITH_RATE_LIMITS, 'replace', RENDER_OPTS);
     const lines = output.split('\n').filter(Boolean);
     expect(lines[2]).toContain('5%');
   });
 
   it('line 3 contains time remaining', async () => {
-    const output = await renderStatusline(MOCK_WITH_RATE_LIMITS, 'replace', { noColor: true });
+    const output = await renderStatusline(MOCK_WITH_RATE_LIMITS, 'replace', RENDER_OPTS);
     const lines = output.split('\n').filter(Boolean);
     expect(lines[2]).toContain('/ 5h');
     expect(lines[2]).toContain('/ 7d');
   });
 
   it('replace mode stays 2 lines without rate_limits', async () => {
-    const output = await renderStatusline(MOCK_STDIN, 'replace', { noColor: true });
+    const output = await renderStatusline(MOCK_STDIN, 'replace', RENDER_OPTS);
     const lines = output.split('\n').filter(Boolean);
     expect(lines.length).toBe(2);
   });
 
   it('add mode ignores rate_limits', async () => {
-    const output = await renderStatusline(MOCK_WITH_RATE_LIMITS, 'add', { noColor: true });
+    const output = await renderStatusline(MOCK_WITH_RATE_LIMITS, 'add', RENDER_OPTS);
     const lines = output.split('\n').filter(Boolean);
     expect(lines.length).toBe(1);
   });
 
   it('inline mode ignores rate_limits', async () => {
-    const output = await renderStatusline(MOCK_WITH_RATE_LIMITS, 'inline', { noColor: true });
+    const output = await renderStatusline(MOCK_WITH_RATE_LIMITS, 'inline', RENDER_OPTS);
     const lines = output.split('\n').filter(Boolean);
     expect(lines.length).toBe(1);
   });
@@ -205,7 +224,7 @@ describe('rate limit line', () => {
         },
       },
     };
-    const output = await renderStatusline(data, 'replace', { noColor: true });
+    const output = await renderStatusline(data, 'replace', RENDER_OPTS);
     const lines = output.split('\n').filter(Boolean);
     expect(lines.length).toBe(3);
     expect(lines[2]).toContain('/ 5h');
@@ -222,7 +241,7 @@ describe('rate limit line', () => {
         },
       },
     };
-    const output = await renderStatusline(data, 'replace', { noColor: true });
+    const output = await renderStatusline(data, 'replace', RENDER_OPTS);
     const lines = output.split('\n').filter(Boolean);
     expect(lines.length).toBe(3);
     expect(lines[2]).toContain('/ 7d');
@@ -243,7 +262,7 @@ describe('rate limit line', () => {
         },
       },
     };
-    const output = await renderStatusline(data as any, 'replace', { noColor: true });
+    const output = await renderStatusline(data as any, 'replace', RENDER_OPTS);
     const lines = output.split('\n').filter(Boolean);
     expect(lines.length).toBe(3);
     expect(lines[2]).toContain('12%');

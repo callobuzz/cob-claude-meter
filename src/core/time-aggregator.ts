@@ -4,7 +4,7 @@ import {
   DEFAULT_IDLE_SECONDS,
   Interval,
   SessionScan,
-  buildIntervals,
+  buildSessionIntervals,
   clipToRange,
   mergeIntervals,
   resolveProjectRoot,
@@ -71,6 +71,10 @@ export interface TimeReport {
     filesScanned: number;
     filesFromCache: number;
     filesFailed: number;
+    /** Sessions whose time came from Claude Code's own turn records. */
+    sessionsMeasured: number;
+    /** Sessions with no turn records, whose time was inferred from entry spacing. */
+    sessionsInferred: number;
     durationMs: number;
   };
   /** Non-fatal problems worth surfacing — a skipped log means undercounted hours. */
@@ -188,6 +192,8 @@ export async function buildTimeReport(options: TimeReportOptions): Promise<TimeR
   let done = 0;
   let filesFromCache = 0;
   let filesFailed = 0;
+  let sessionsMeasured = 0;
+  let sessionsInferred = 0;
   const warnings: string[] = [];
 
   // 2. Read every session into intervals, reusing cached results where possible.
@@ -201,6 +207,8 @@ export async function buildTimeReport(options: TimeReportOptions): Promise<TimeR
 
       if (cached) {
         filesFromCache++;
+        if (cached.source === 'turns') sessionsMeasured++;
+        else if (cached.intervals.length > 0) sessionsInferred++;
         bucket.sessions.push({
           filePath,
           id: basename(filePath, '.jsonl'),
@@ -213,10 +221,14 @@ export async function buildTimeReport(options: TimeReportOptions): Promise<TimeR
         }
       } else {
         try {
-          const { timestamps, cwds } = await scanWithRetry(filePath, read);
-          const intervals = buildIntervals(timestamps, idleSeconds);
+          const scan = await scanWithRetry(filePath, read);
+          const { timestamps, cwds } = scan;
+          const { intervals, source } = buildSessionIntervals(scan, idleSeconds);
           const firstSeen = timestamps.length ? timestamps[0] : null;
           const lastSeen = timestamps.length ? timestamps[timestamps.length - 1] : null;
+
+          if (source === 'turns') sessionsMeasured++;
+          else if (intervals.length > 0) sessionsInferred++;
 
           bucket.sessions.push({
             filePath,
@@ -231,6 +243,7 @@ export async function buildTimeReport(options: TimeReportOptions): Promise<TimeR
 
           cache?.set(filePath, {
             idleSeconds,
+            source,
             intervals,
             cwds: [...cwds.entries()],
             firstSeen,
@@ -253,7 +266,12 @@ export async function buildTimeReport(options: TimeReportOptions): Promise<TimeR
   }
 
   cache?.prune(livePaths);
-  cache?.save();
+  const saved = cache?.save();
+  if (saved && !saved.ok) {
+    // The report itself is fine — only the cache write failed, so the next load
+    // rescans instead of reusing this work. Say so rather than looking healthy.
+    warnings.push(`Timeline cache could not be saved (${saved.reason}); the next load will be slower.`);
+  }
 
   // 3. Resolve each directory to a real project path, then merge directories
   //    that point at the same place (a folder rename leaves two behind).
@@ -371,6 +389,8 @@ export async function buildTimeReport(options: TimeReportOptions): Promise<TimeR
       filesScanned: totalFiles,
       filesFromCache,
       filesFailed,
+      sessionsMeasured,
+      sessionsInferred,
       durationMs: Date.now() - startedAt,
     },
     warnings,

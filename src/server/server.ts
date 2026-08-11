@@ -123,9 +123,13 @@ export function startDashboardServer(options: ServerOptions): Promise<{ close: (
   return new Promise((resolvePromise, reject) => {
     server.once('error', reject);
     server.listen(options.port, options.host, () => {
+      // Report the port actually bound, not the one asked for: port 0 means
+      // "any free port", and echoing the request back yields a dead URL.
+      const address = server.address();
+      const port = typeof address === 'object' && address ? address.port : options.port;
       const shown = options.host === '0.0.0.0' ? 'localhost' : options.host;
       resolvePromise({
-        url: `http://${shown}:${options.port}`,
+        url: `http://${shown}:${port}`,
         close: () => new Promise(done => server.close(() => done())),
       });
     });

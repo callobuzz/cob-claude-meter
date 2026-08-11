@@ -8,11 +8,26 @@ export type Interval = [number, number];
 /** Gaps longer than this are treated as idle time and dropped. */
 export const DEFAULT_IDLE_SECONDS = 300;
 
+/**
+ * How a session's working time was established.
+ *
+ * `turns` means Claude Code recorded how long each turn took and we used those
+ * numbers. `gaps` means it did not, so the time was inferred from how closely
+ * log entries sit together — an estimate governed by the idle threshold.
+ */
+export type TimingSource = 'turns' | 'gaps';
+
 export interface SessionScan {
   /** Every timestamp found in the session, ascending. */
   timestamps: number[];
   /** Every `cwd` value seen, with how many entries carried it. */
   cwds: Map<string, number>;
+  /**
+   * One interval per completed turn, from Claude Code's own `turn_duration`
+   * records. These are measured, not inferred: a turn that spent 40 minutes
+   * inside a single build is 40 minutes here.
+   */
+  turns: Interval[];
 }
 
 export interface SessionTimeline {
@@ -22,6 +37,8 @@ export interface SessionTimeline {
   activeMs: number;
   firstSeen: number | null;
   lastSeen: number | null;
+  /** Whether activeMs was measured from turn records or inferred from gaps. */
+  source: TimingSource;
 }
 
 /**
@@ -34,6 +51,7 @@ export interface SessionTimeline {
 export async function scanSessionTimestamps(filePath: string): Promise<SessionScan> {
   const timestamps: number[] = [];
   const cwds = new Map<string, number>();
+  const turns: Interval[] = [];
 
   const rl = createInterface({
     input: createReadStream(filePath, { encoding: 'utf-8' }),
@@ -56,7 +74,21 @@ export async function scanSessionTimestamps(filePath: string): Promise<SessionSc
 
       if (json.timestamp) {
         const ms = new Date(json.timestamp).getTime();
-        if (!isNaN(ms)) timestamps.push(ms);
+        if (!isNaN(ms)) {
+          timestamps.push(ms);
+
+          // Claude Code stamps this when a turn ends, carrying how long the turn
+          // ran. The timestamp is the end, so the turn started durationMs earlier.
+          if (
+            json.type === 'system' &&
+            json.subtype === 'turn_duration' &&
+            typeof json.durationMs === 'number' &&
+            json.durationMs > 0 &&
+            Number.isFinite(json.durationMs)
+          ) {
+            turns.push([ms - json.durationMs, ms]);
+          }
+        }
       }
     } catch {
       // Malformed line — the file is append-only and may be mid-write.
@@ -64,7 +96,30 @@ export async function scanSessionTimestamps(filePath: string): Promise<SessionSc
   }
 
   timestamps.sort((a, b) => a - b);
-  return { timestamps, cwds };
+  turns.sort((a, b) => a[0] - b[0]);
+  return { timestamps, cwds, turns };
+}
+
+/**
+ * Picks the working intervals for one session.
+ *
+ * Prefers Claude Code's recorded turn durations, which measure the stretch the
+ * agent was actually engaged — a twelve-minute `npm run` inside a turn counts
+ * in full, and the minutes you spend reading the reply afterwards do not count
+ * at all. Only when a session carries no such records does it fall back to
+ * inferring activity from the spacing of log entries.
+ *
+ * Turns are merged because queued prompts can produce overlapping records, and
+ * counting the same minute twice within one session would inflate the total.
+ */
+export function buildSessionIntervals(
+  scan: SessionScan,
+  idleSeconds: number = DEFAULT_IDLE_SECONDS,
+): { intervals: Interval[]; source: TimingSource } {
+  if (scan.turns.length > 0) {
+    return { intervals: mergeIntervals(scan.turns), source: 'turns' };
+  }
+  return { intervals: buildIntervals(scan.timestamps, idleSeconds), source: 'gaps' };
 }
 
 /**
@@ -225,8 +280,9 @@ export async function loadSessionTimeline(
   filePath: string,
   idleSeconds: number = DEFAULT_IDLE_SECONDS,
 ): Promise<{ timeline: SessionTimeline; cwds: Map<string, number> }> {
-  const { timestamps, cwds } = await scanSessionTimestamps(filePath);
-  const intervals = buildIntervals(timestamps, idleSeconds);
+  const scan = await scanSessionTimestamps(filePath);
+  const { timestamps, cwds } = scan;
+  const { intervals, source } = buildSessionIntervals(scan, idleSeconds);
 
   return {
     timeline: {
@@ -236,6 +292,7 @@ export async function loadSessionTimeline(
       activeMs: sumDuration(intervals),
       firstSeen: timestamps.length ? timestamps[0] : null,
       lastSeen: timestamps.length ? timestamps[timestamps.length - 1] : null,
+      source,
     },
     cwds,
   };

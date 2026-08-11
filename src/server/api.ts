@@ -3,6 +3,7 @@ import { ProjectTime, TimeReport, buildTimeReport } from '../core/time-aggregato
 import { TimelineCache } from '../core/timeline-cache.js';
 import { ProjectMeta, TagStore } from '../core/tag-store.js';
 import { DEFAULT_IDLE_SECONDS } from '../core/time-tracker.js';
+import { GroupBy, WallClockRequest, computeWallClock } from '../core/wall-clock.js';
 
 export interface ApiContext {
   logPaths: string[];
@@ -17,7 +18,16 @@ export interface ApiResponse {
   body: unknown;
 }
 
-export interface DecoratedProject extends ProjectTime {
+/**
+ * A project as sent to the browser.
+ *
+ * `intervals` is deliberately absent. The raw intervals are the one part of a
+ * report that grows without bound — a year of sessions is megabytes of
+ * timestamps — and the only thing the client used them for was folding a
+ * filtered subset into a wall-clock union. That fold now happens server-side
+ * via /api/wallclock, so the response carries numbers rather than history.
+ */
+export interface DecoratedProject extends Omit<ProjectTime, 'intervals'> {
   displayName: string;
   client: string | null;
   tags: string[];
@@ -73,8 +83,9 @@ function resolveRange(params: URLSearchParams): { start: number; end: number; la
 }
 
 function decorate(project: ProjectTime, meta: ProjectMeta): DecoratedProject {
+  const { intervals: _intervals, ...rest } = project;
   return {
-    ...project,
+    ...rest,
     displayName: meta.alias ?? project.name,
     client: meta.client,
     tags: meta.tags,
@@ -122,6 +133,24 @@ export async function handleApiRequest(
 ): Promise<ApiResponse> {
   if (method === 'GET' && pathname === '/api/health') {
     return { status: 200, body: { ok: true, logPaths: ctx.logPaths } };
+  }
+
+  if (method === 'POST' && pathname === '/api/wallclock') {
+    const { start, end } = resolveRange(params);
+    const idleSeconds = clampIdle(params.get('idle'));
+    const report = await getReport(ctx, start, end, idleSeconds, false);
+
+    const payload = (body ?? {}) as Partial<WallClockRequest>;
+    const groupBy: GroupBy =
+      payload.groupBy === 'week' || payload.groupBy === 'month' ? payload.groupBy : 'day';
+    // An absent list means every project; an empty one means none. The
+    // difference matters — filtering everything out must read as zero, not all.
+    const projects = Array.isArray(payload.projects)
+      ? payload.projects.filter((p): p is string => typeof p === 'string')
+      : report.projects.map(p => p.id);
+
+    const byProject = new Map(report.projects.map(p => [p.id, p.intervals]));
+    return { status: 200, body: computeWallClock(byProject, { projects, groupBy }) };
   }
 
   if (method === 'GET' && pathname === '/api/report') {

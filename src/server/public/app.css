@@ -199,6 +199,14 @@ button, input, select { font: inherit; color: inherit; }
   font-weight: 600;
 }
 
+/* Marks a control that only applies to part of the data. */
+.field-note {
+  text-transform: none;
+  letter-spacing: 0.04em;
+  opacity: 0.65;
+  font-weight: 500;
+}
+
 input[type="search"], input[type="date"], input[type="text"], select {
   /* background-color must be set explicitly, NOT folded into the `background`
      shorthand: the shorthand resets background-color to transparent, and the

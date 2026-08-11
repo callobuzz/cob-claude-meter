@@ -14,6 +14,23 @@ export type StatuslineMode = 'replace' | 'add' | 'inline';
 
 export interface StatuslineOptions {
   noColor?: boolean;
+  /**
+   * Where the token cache lives. Defaults to the real `~/.claude-meter`.
+   *
+   * Overridable so a caller can point at its own directory instead of the
+   * invoking user's home — without it, rendering always reads (and on a stale
+   * cache, writes) the machine's real state, which makes the output depend on
+   * whatever happened to be cached at the time.
+   */
+  cacheDir?: string;
+  /**
+   * Whether a stale cache may trigger a rescan mid-render. Defaults to true.
+   *
+   * Set false when the caller needs the render to depend only on what is
+   * already cached: the refresh walks every session log, so leaving it on makes
+   * the call both slow and dependent on unrelated on-disk state.
+   */
+  autoRefresh?: boolean;
 }
 
 interface StdinData {
@@ -218,17 +235,19 @@ export async function renderStatusline(
   mode: StatuslineMode,
   options?: StatuslineOptions,
 ): Promise<string> {
-  const cacheDir = join(homedir(), '.claude-meter');
+  const cacheDir = options?.cacheDir ?? join(homedir(), '.claude-meter');
   const cacheManager = new CacheManager(cacheDir);
   const configManager = new ConfigManager();
 
   // Auto-refresh cache if stale or missing
-  const ttl = configManager.load().statusline.refreshCache;
-  if (cacheManager.isStale(ttl)) {
-    try {
-      await refreshCache(cacheManager, configManager);
-    } catch {
-      // Don't block statusline on scan errors
+  if (options?.autoRefresh !== false) {
+    const ttl = configManager.load().statusline.refreshCache;
+    if (cacheManager.isStale(ttl)) {
+      try {
+        await refreshCache(cacheManager, configManager);
+      } catch {
+        // Don't block statusline on scan errors
+      }
     }
   }
 

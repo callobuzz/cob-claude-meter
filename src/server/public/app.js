@@ -75,73 +75,53 @@ function monthKey(dayKey) {
   return dayKey.slice(0, 7);
 }
 
-/* ---------- interval math ----------
-   Wall-clock is a union, so it cannot be summed from per-project scalars.
-   The report ships each project's merged intervals; these fold any subset of
-   them back into a union, which is what makes wall-clock work under filters.
+/* ---------- wall-clock ----------
+   Wall-clock is a union, so it cannot be summed from per-project scalars: it
+   needs the underlying intervals, and a filtered view needs them re-folded.
 
-   mergeIntervals/sumDuration deliberately mirror src/core/time-tracker.ts.
-   This file is served to the browser verbatim — no bundler, no build step — so
-   it cannot import the TypeScript module. The union-checks in the smoke suite
-   assert both implementations agree on the live report. */
+   That fold lives on the server (src/core/wall-clock.ts). The report used to
+   ship every project's raw intervals so this file could do it, which meant the
+   response grew with the entire history and the interval maths existed twice —
+   once here, once in TypeScript — with no way to import one from the other.
+   Now the browser asks for the numbers it needs and holds no timestamps. */
 
-/** Merges overlapping/touching intervals. Input may be unsorted. */
-function mergeIntervals(intervals) {
-  if (intervals.length === 0) return [];
-  const sorted = [...intervals].sort((a, b) => a[0] - b[0]);
-  const out = [[sorted[0][0], sorted[0][1]]];
-  for (let i = 1; i < sorted.length; i++) {
-    const last = out[out.length - 1];
-    const [start, end] = sorted[i];
-    if (start <= last[1]) {
-      if (end > last[1]) last[1] = end;
-    } else {
-      out.push([start, end]);
-    }
-  }
-  return out;
-}
+/** Wall-clock for the current selection, keyed so repeat renders don't refetch. */
+let wallClock = { key: null, totalMs: 0, buckets: {} };
 
-function sumDuration(intervals) {
-  let total = 0;
-  for (const [start, end] of intervals) total += end - start;
-  return total;
-}
-
-/** Total overlap between a set of intervals and the window [start, end). */
-function durationWithin(intervals, start, end) {
-  let total = 0;
-  for (const [a, b] of intervals) {
-    const lo = a > start ? a : start;
-    const hi = b < end ? b : end;
-    if (hi > lo) total += hi - lo;
-  }
-  return total;
-}
-
-/** Union of the merged intervals of the given projects. */
-function unionOf(projects) {
-  const all = [];
-  for (const p of projects) {
-    if (p.intervals) all.push(...p.intervals);
-  }
-  return mergeIntervals(all);
+// Newline-joined, not space-joined: project ids are filesystem paths and may
+// contain spaces, which would let two different selections share a key.
+function selectionKey(ids, groupBy) {
+  return `${groupBy}|${[...ids].sort().join('\n')}`;
 }
 
 /**
- * Local-time [start, end) bounds of a timeline bucket key.
+ * Fetches wall-clock for the visible projects if the selection changed.
  *
- * These must match how the server split intervals across days — local
- * midnight, not UTC — or a filtered day would disagree with an unfiltered one.
+ * Returns true when the numbers moved, so the caller knows to re-render. The
+ * server memoises the report these are folded from, so this stays cheap.
  */
-function bucketBounds(key, groupBy) {
-  if (groupBy === 'month') {
-    const [y, m] = key.split('-').map(Number);
-    return [new Date(y, m - 1, 1).getTime(), new Date(y, m, 1).getTime()];
+async function refreshWallClock() {
+  const ids = visibleProjects().map((p) => p.id);
+  const key = selectionKey(ids, state.groupBy);
+  if (wallClock.key === key) return false;
+
+  try {
+    const res = await fetch(`/api/wallclock?${buildQuery(false)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ projects: ids, groupBy: state.groupBy }),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    wallClock = { key, totalMs: data.totalMs ?? 0, buckets: data.buckets ?? {} };
+    return true;
+  } catch (err) {
+    // Wall-clock is one figure among many; a failure here must not blank the
+    // dashboard. Show it as unavailable rather than as a confident zero.
+    wallClock = { key, totalMs: null, buckets: {} };
+    console.warn('wall-clock request failed:', err);
+    return true;
   }
-  const [y, m, d] = key.split('-').map(Number);
-  const span = groupBy === 'week' ? 7 : 1; // week keys are the Monday
-  return [new Date(y, m - 1, d).getTime(), new Date(y, m - 1, d + span).getTime()];
 }
 
 function toast(message, isError = false) {
@@ -188,7 +168,10 @@ async function load(forceRefresh = false) {
     const res = await fetch(`/api/report?${buildQuery(forceRefresh)}`);
     if (!res.ok) throw new Error(`Server returned ${res.status}`);
     report = await res.json();
-    renderAll();
+    // The range or threshold may have moved under an identical project set, so
+    // the previous wall-clock is stale even though its key would still match.
+    wallClock = { key: null, totalMs: 0, buckets: {} };
+    await renderAll();
   } catch (err) {
     report = null;
     $('panel-projects').innerHTML =
@@ -248,7 +231,11 @@ function visibleIds() {
 
 /* ---------- rendering ---------- */
 
-function renderAll() {
+async function renderAll() {
+  // Wall-clock is fetched before painting so the stat and the timeline agree.
+  // It no-ops when the selection has not changed, so filter-only re-renders
+  // that leave the project set alone cost nothing.
+  await refreshWallClock();
   renderStats();
   renderFilterOptions();
   renderProjects();
@@ -263,9 +250,9 @@ function renderStats() {
   const filtered = shown.length !== report.projects.length;
 
   const totalMs = shown.reduce((acc, p) => acc + p.totalMs, 0);
-  // Union of exactly the projects on screen — correct filtered or not.
-  const union = unionOf(shown);
-  const wallMs = sumDuration(union);
+  // Union of exactly the projects on screen — computed server-side, correct
+  // filtered or not. null means the request failed; say so rather than show 0.
+  const wallMs = wallClock.totalMs;
   // Days the visible projects were actually active, not the report-wide count.
   const days = new Set(shown.flatMap((p) => Object.keys(p.byDay))).size;
   const sessions = shown.reduce((acc, p) => acc + p.sessionCount, 0);
@@ -275,10 +262,14 @@ function renderStats() {
     ? `${shown.length} of ${report.projects.length} projects`
     : labelFor(report.rangeLabel);
 
-  $('stat-wall').innerHTML = `${fmtHours(wallMs)}<span class="unit">h</span>`;
-  $('stat-concurrency').textContent = wallMs
-    ? `${(totalMs / wallMs).toFixed(2)}× avg concurrency`
-    : 'no overlapping sessions';
+  $('stat-wall').innerHTML = wallMs === null
+    ? `<span class="unit">unavailable</span>`
+    : `${fmtHours(wallMs)}<span class="unit">h</span>`;
+  $('stat-concurrency').textContent = wallMs === null
+    ? 'could not be calculated'
+    : wallMs
+      ? `${(totalMs / wallMs).toFixed(2)}× avg concurrency`
+      : 'no overlapping sessions';
 
   $('stat-days').textContent = String(days);
   $('stat-avg').textContent = days ? `${fmtHours(totalMs / days)} h/day avg` : '—';
@@ -419,7 +410,6 @@ function renderTimeline() {
 
   const shown = visibleProjects();
   const allowed = new Set(shown.map((p) => p.id));
-  const union = unionOf(shown);
   const bucketOf = { day: (d) => d, week: weekKey, month: monthKey }[state.groupBy];
 
   // Re-derive buckets from per-day project splits so filters apply here too.
@@ -441,12 +431,11 @@ function renderTimeline() {
     bucket.days.add(day.day);
   }
 
-  // Wall-clock per bucket: clip the visible union to the bucket's local-time
-  // window. Summing per-day wall-clock would double-count nothing but would
-  // still be wrong for week/month, where sessions span the boundary.
+  // Wall-clock per bucket comes back already folded for this exact selection.
+  // Summing per-day wall-clock here would be wrong for week/month, where a
+  // session spanning the boundary belongs to one union, not two.
   for (const bucket of buckets.values()) {
-    const [from, to] = bucketBounds(bucket.key, state.groupBy);
-    bucket.wallMs = durationWithin(union, from, to);
+    bucket.wallMs = wallClock.buckets[bucket.key] ?? 0;
   }
 
   const rows = [...buckets.values()].sort((a, b) => (a.key < b.key ? 1 : -1));
@@ -571,16 +560,32 @@ function renderFooter() {
   if (!report) return;
   const idleMin = report.idleSeconds / 60;
   const failed = report.scan.filesFailed;
+  const measured = report.scan.sessionsMeasured ?? 0;
+  const inferred = report.scan.sessionsInferred ?? 0;
+
+  // Say which sessions were measured and which were guessed at. A total that
+  // mixes the two should not look uniformly precise.
+  const basis = inferred === 0
+    ? `${measured} sessions measured from recorded turn times`
+    : `${measured} measured from recorded turn times · ` +
+      `${inferred} estimated from activity gaps (idle cutoff ${idleMin} min)`;
 
   $('footer-meta').textContent =
-    `Idle cutoff ${idleMin} min · gaps longer than this are excluded · ` +
+    `${basis} · ` +
     `${report.scan.filesScanned} session logs (${report.scan.filesFromCache} cached) · ` +
     `generated ${new Date(report.generatedAt).toLocaleTimeString()}`;
 
   // A skipped log means the totals are undercounted — never hide that.
   if (failed > 0) {
     toast(`${failed} session log${failed > 1 ? 's' : ''} could not be read — totals are incomplete`, true);
+  }
+
+  if (report.warnings?.length) {
     console.warn('Claude Meter scan warnings:', report.warnings);
+    // A cache write that failed leaves the totals correct but the next load slow.
+    // It used to surface as a 500, so it must not now vanish into the console.
+    const cacheWarning = report.warnings.find(w => w.startsWith('Timeline cache'));
+    if (cacheWarning && failed === 0) toast(cacheWarning);
   }
 }
 
